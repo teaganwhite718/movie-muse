@@ -24,10 +24,11 @@ interface MovieSource {
 }
 
 /**
- * Multi-Query Retrieval: generate 3 query variations using the LLM,
- * then search TMDB for each, merge & deduplicate results.
+ * Multi-Query Retrieval: use LLM to extract movie titles and short search
+ * keywords from the user question. TMDB search is title-based, so we need
+ * clean, short search terms — not full sentences.
  */
-async function generateQueryVariations(
+async function extractSearchTerms(
   query: string,
   apiKey: string
 ): Promise<string[]> {
@@ -45,20 +46,31 @@ async function generateQueryVariations(
             {
               role: "system",
               content:
-                'You generate search query variations for a movie knowledge base. Given a user question, output exactly 3 alternative phrasings as a JSON array of strings. Only output the JSON array, nothing else.',
+                `You extract movie search terms from user questions. The search terms will be used with TMDB's movie search API which matches on movie titles.
+
+Rules:
+- Extract movie titles mentioned or implied in the question
+- If no specific movie is mentioned, extract genre/theme keywords that could match movie titles
+- Output 2-4 short search terms as a JSON array of strings
+- Each term should be 1-3 words maximum — just titles or key terms
+- Examples:
+  "What is Inception about?" → ["Inception"]
+  "Compare The Godfather and Goodfellas" → ["The Godfather", "Goodfellas"]
+  "Recommend a sci-fi movie" → ["sci-fi", "science fiction", "space"]
+  "Who directed The Dark Knight?" → ["The Dark Knight"]
+  "What themes does Parasite explore?" → ["Parasite"]
+  "Best horror movies" → ["horror", "scary", "thriller"]
+Only output the JSON array, nothing else.`,
             },
-            {
-              role: "user",
-              content: `Original question: "${query}"\n\nGenerate 3 alternative search queries:`,
-            },
+            { role: "user", content: query },
           ],
-          temperature: 0.7,
+          temperature: 0.3,
         }),
       }
     );
 
     if (!resp.ok) {
-      console.error("Query variation generation failed:", resp.status);
+      console.error("Search term extraction failed:", resp.status);
       return [query];
     }
 
@@ -66,11 +78,12 @@ async function generateQueryVariations(
     const content = data.choices?.[0]?.message?.content || "[]";
     const match = content.match(/\[[\s\S]*\]/);
     if (match) {
-      const variations: string[] = JSON.parse(match[0]);
-      return [query, ...variations.slice(0, 3)];
+      const terms: string[] = JSON.parse(match[0]);
+      console.log("Extracted search terms:", terms);
+      return terms.length > 0 ? terms : [query];
     }
   } catch (e) {
-    console.error("Error generating query variations:", e);
+    console.error("Error extracting search terms:", e);
   }
   return [query];
 }
