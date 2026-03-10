@@ -21,12 +21,14 @@ export type Database = {
           director: string | null
           document_id: string
           embedding: string | null
+          fts: unknown
           genre: string | null
           id: string
           movie_title: string
           release_year: string | null
           section: string | null
           text: string
+          title_fts: unknown
         }
         Insert: {
           chunk_index: number
@@ -34,12 +36,14 @@ export type Database = {
           director?: string | null
           document_id: string
           embedding?: string | null
+          fts?: unknown
           genre?: string | null
           id?: string
           movie_title: string
           release_year?: string | null
           section?: string | null
           text: string
+          title_fts?: unknown
         }
         Update: {
           chunk_index?: number
@@ -47,12 +51,14 @@ export type Database = {
           director?: string | null
           document_id?: string
           embedding?: string | null
+          fts?: unknown
           genre?: string | null
           id?: string
           movie_title?: string
           release_year?: string | null
           section?: string | null
           text?: string
+          title_fts?: unknown
         }
         Relationships: [
           {
@@ -121,6 +127,21 @@ export type Database = {
           release_year: string
           section: string
           similarity: number
+          text: string
+        }[]
+      }
+      search_movie_chunks: {
+        Args: { match_count?: number; search_query: string }
+        Returns: {
+          chunk_index: number
+          director: string
+          document_id: string
+          genre: string
+          id: string
+          movie_title: string
+          rank: number
+          release_year: string
+          section: string
           text: string
         }[]
       }
