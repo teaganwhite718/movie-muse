@@ -14,13 +14,116 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      movie_chunks: {
+        Row: {
+          chunk_index: number
+          created_at: string | null
+          director: string | null
+          document_id: string
+          embedding: string | null
+          genre: string | null
+          id: string
+          movie_title: string
+          release_year: string | null
+          section: string | null
+          text: string
+        }
+        Insert: {
+          chunk_index: number
+          created_at?: string | null
+          director?: string | null
+          document_id: string
+          embedding?: string | null
+          genre?: string | null
+          id?: string
+          movie_title: string
+          release_year?: string | null
+          section?: string | null
+          text: string
+        }
+        Update: {
+          chunk_index?: number
+          created_at?: string | null
+          director?: string | null
+          document_id?: string
+          embedding?: string | null
+          genre?: string | null
+          id?: string
+          movie_title?: string
+          release_year?: string | null
+          section?: string | null
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "movie_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "movie_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      movie_documents: {
+        Row: {
+          created_at: string | null
+          director: string | null
+          full_text: string
+          genre: string | null
+          id: string
+          movie_title: string
+          overview: string | null
+          release_year: string | null
+          tmdb_id: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          director?: string | null
+          full_text: string
+          genre?: string | null
+          id?: string
+          movie_title: string
+          overview?: string | null
+          release_year?: string | null
+          tmdb_id?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          director?: string | null
+          full_text?: string
+          genre?: string | null
+          id?: string
+          movie_title?: string
+          overview?: string | null
+          release_year?: string | null
+          tmdb_id?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      match_movie_chunks: {
+        Args: {
+          match_count?: number
+          match_threshold?: number
+          query_embedding: string
+        }
+        Returns: {
+          chunk_index: number
+          director: string
+          document_id: string
+          genre: string
+          id: string
+          movie_title: string
+          release_year: string
+          section: string
+          similarity: number
+          text: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
