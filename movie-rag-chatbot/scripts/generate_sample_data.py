@@ -228,7 +228,7 @@ def get_top_movie_ids(count: int = 500) -> list[int]:
     return list(movie_ids)[:count]
 
 
-def generate_sample_data(count: int = 55):
+def generate_sample_data(count: int = 500):
     """Fetch movie data from TMDB and save as text documents."""
     if not TMDB_API_KEY:
         print("❌ TMDB_API_KEY not set. Add it to your .env file.")
