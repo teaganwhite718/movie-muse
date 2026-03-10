@@ -23,43 +23,9 @@ interface MovieSource {
 }
 
 /**
- * Generate embedding for a query using Lovable AI gateway
+ * Multi-Query: extract search terms from the user query for text search
  */
-async function generateEmbedding(
-  text: string,
-  apiKey: string
-): Promise<number[] | null> {
-  try {
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        input: text.slice(0, 8000),
-        model: "text-embedding-3-small",
-        dimensions: 768,
-      }),
-    });
-
-    if (!resp.ok) {
-      console.error(`Embedding failed (${resp.status}):`, await resp.text());
-      return null;
-    }
-
-    const data = await resp.json();
-    return data.data?.[0]?.embedding || null;
-  } catch (e) {
-    console.error("Embedding error:", e);
-    return null;
-  }
-}
-
-/**
- * Multi-Query: extract search variations from the user query
- */
-async function extractSearchQueries(
+async function extractSearchTerms(
   query: string,
   apiKey: string
 ): Promise<string[]> {
@@ -76,12 +42,18 @@ async function extractSearchQueries(
           messages: [
             {
               role: "system",
-              content: `Generate 3 search query variations for a movie database. Each variation should capture different aspects of the user's question. Output a JSON array of strings, nothing else.
+              content: `Extract search terms from user questions about movies. These will be used with PostgreSQL full-text search.
 
+Rules:
+- Extract movie titles, actor names, director names, and key topic words
+- Output 2-4 search queries as a JSON array of strings
+- Each query should be 1-4 words for effective text matching
 Examples:
-"What is Inception about?" → ["Inception plot overview", "Inception Christopher Nolan sci-fi", "Inception dream heist movie"]
-"Compare The Godfather and Goodfellas" → ["The Godfather crime family", "Goodfellas gangster movie", "Godfather vs Goodfellas comparison"]
-"Best horror movies" → ["top rated horror films", "scary movies critically acclaimed", "horror genre best rated"]`,
+"What is Inception about?" → ["Inception", "Inception plot"]
+"Compare The Godfather and Goodfellas" → ["The Godfather", "Goodfellas"]
+"Who directed The Dark Knight?" → ["Dark Knight", "Dark Knight director"]
+"Best horror movies" → ["horror", "horror rated"]
+Only output the JSON array, nothing else.`,
             },
             { role: "user", content: query },
           ],
@@ -105,27 +77,22 @@ Examples:
 }
 
 /**
- * Retrieve chunks from pgvector using embedding similarity
+ * Retrieve chunks using PostgreSQL full-text search (multi-query)
  */
 async function retrieveChunks(
   queries: string[],
-  apiKey: string,
   supabase: any
 ): Promise<MovieSource[]> {
   const allResults: any[] = [];
 
   for (const q of queries) {
-    const embedding = await generateEmbedding(q, apiKey);
-    if (!embedding) continue;
-
-    const { data, error } = await supabase.rpc("match_movie_chunks", {
-      query_embedding: embedding,
-      match_threshold: 0.2,
+    const { data, error } = await supabase.rpc("search_movie_chunks", {
+      search_query: q,
       match_count: 5,
     });
 
     if (error) {
-      console.error("Vector search error:", error);
+      console.error(`Text search error for "${q}":`, error);
       continue;
     }
     if (data) allResults.push(...data);
@@ -143,12 +110,11 @@ async function retrieveChunks(
       genre: r.genre,
       director: r.director,
       section: r.section,
-      source: `Vector DB (similarity: ${r.similarity?.toFixed(3)})`,
+      source: `Vector DB (rank: ${r.rank?.toFixed(3)})`,
       text: r.text,
     });
   }
 
-  // Sort by similarity (highest first) and return top results
   return unique.slice(0, 8);
 }
 
@@ -161,8 +127,7 @@ serve(async (req) => {
     const { messages, action } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY)
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -187,10 +152,7 @@ serve(async (req) => {
           status: "ready",
           tmdb_connected: true,
           ai_connected: true,
-          vector_db: {
-            documents: docCount || 0,
-            chunks: chunkCount || 0,
-          },
+          vector_db: { documents: docCount || 0, chunks: chunkCount || 0 },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -199,30 +161,24 @@ serve(async (req) => {
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(
         JSON.stringify({ error: "Messages array is required" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Get the latest user message for retrieval
-    const userMessages = messages.filter(
-      (m: ChatMessage) => m.role === "user"
-    );
+    const userMessages = messages.filter((m: ChatMessage) => m.role === "user");
     const latestQuery = userMessages[userMessages.length - 1]?.content || "";
 
-    // Step 1: Multi-Query — generate search variations
-    console.log("Generating query variations for:", latestQuery);
-    const searchQueries = await extractSearchQueries(latestQuery, LOVABLE_API_KEY);
-    console.log("Search queries:", searchQueries);
+    // Step 1: Multi-Query — extract search terms
+    console.log("Extracting search terms for:", latestQuery);
+    const searchTerms = await extractSearchTerms(latestQuery, LOVABLE_API_KEY);
+    console.log("Search terms:", searchTerms);
 
-    // Step 2: Retrieve from vector database
+    // Step 2: Retrieve from vector database via text search
     console.log("Retrieving from vector database...");
-    const sources = await retrieveChunks(searchQueries, LOVABLE_API_KEY, supabase);
-    console.log(`Retrieved ${sources.length} chunks from vector DB`);
+    const sources = await retrieveChunks(searchTerms, supabase);
+    console.log(`Retrieved ${sources.length} chunks`);
 
-    // Step 3: Build context from retrieved chunks
+    // Step 3: Build context
     const contextBlock = sources.length
       ? sources
           .map(
@@ -232,7 +188,7 @@ serve(async (req) => {
           .join("\n\n---\n\n")
       : "No relevant movie documents were retrieved for this query.";
 
-    // Step 4: Build final prompt
+    // Step 4: System prompt
     const systemPrompt = `You are CineBot, a movie knowledge assistant powered by Retrieval-Augmented Generation (RAG) with a vector database of 50+ movie documents.
 
 INSTRUCTIONS:
@@ -260,10 +216,7 @@ ${contextBlock}`;
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...recentMessages,
-          ],
+          messages: [{ role: "system", content: systemPrompt }, ...recentMessages],
           stream: true,
         }),
       }
@@ -273,19 +226,13 @@ ${contextBlock}`;
       if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
-          {
-            status: 429,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       if (response.status === 402) {
         return new Response(
           JSON.stringify({ error: "AI usage limit reached. Please add credits." }),
-          {
-            status: 402,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       const errText = await response.text();
@@ -293,7 +240,6 @@ ${contextBlock}`;
       throw new Error("AI gateway returned an error");
     }
 
-    // Stream response with sources metadata prepended
     const encoder = new TextEncoder();
     const sourcesEvent = `data: ${JSON.stringify({ type: "sources", sources })}\n\n`;
 
@@ -323,13 +269,8 @@ ${contextBlock}`;
   } catch (e) {
     console.error("chat-rag error:", e);
     return new Response(
-      JSON.stringify({
-        error: e instanceof Error ? e.message : "Unknown error",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
