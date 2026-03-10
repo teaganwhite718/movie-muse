@@ -143,3 +143,31 @@ export async function checkStatus(): Promise<AppStatus> {
     return { status: "offline", tmdb_connected: false, ai_connected: false };
   }
 }
+
+/**
+ * Trigger movie database seeding.
+ */
+export async function seedMovies(count = 55): Promise<{
+  message: string;
+  documents: number;
+  chunks: number;
+  new_movies?: number;
+  failed?: number;
+  error?: string;
+}> {
+  const resp = await fetch(SEED_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: JSON.stringify({ count }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || "Seeding failed");
+  }
+
+  return await resp.json();
+}
