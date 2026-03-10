@@ -45,7 +45,7 @@ export const ChatMessage = memo(function ChatMessage({
         </span>
 
         <div className="prose prose-sm prose-invert max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-a:text-primary prose-code:text-primary/80 prose-code:bg-secondary prose-code:rounded prose-code:px-1">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown>
             {message.content}
           </ReactMarkdown>
           {isStreaming && (
