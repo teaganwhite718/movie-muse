@@ -1,0 +1,2 @@
+# Place raw movie document files here (.pdf, .html, .docx, .txt)
+# Run `python -m scripts.generate_sample_data` to auto-generate 50 sample movie docs.
