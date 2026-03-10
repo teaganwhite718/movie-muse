@@ -140,41 +140,91 @@ User Reviews:
     return doc.strip()
 
 
-def get_top_movie_ids(count: int = 60) -> list[int]:
+def get_top_movie_ids(count: int = 500) -> list[int]:
     """
-    Gather movie IDs from multiple TMDB lists to ensure 50+ diverse movies.
-    Uses: top rated, popular, and curated genre-based discovery.
+    Gather movie IDs from multiple TMDB lists for 500+ diverse movies.
+    Uses: top rated, popular, now playing, upcoming, and genre-based discovery.
     """
     movie_ids = set()
+    pages_needed = (count // 20) + 5  # 20 results per page, extra buffer
 
-    # Top rated movies (pages 1-3)
-    for page in range(1, 4):
-        data = tmdb_get("movie/top_rated", {"page": page, "language": "en-US"})
-        for m in data.get("results", []):
-            movie_ids.add(m["id"])
-        time.sleep(0.25)
+    print(f"   Fetching top rated movies...")
+    for page in range(1, min(pages_needed // 3 + 1, 26)):
+        try:
+            data = tmdb_get("movie/top_rated", {"page": page, "language": "en-US"})
+            for m in data.get("results", []):
+                movie_ids.add(m["id"])
+            time.sleep(0.2)
+        except Exception as e:
+            print(f"    ⚠️  Page {page} failed: {e}")
+            break
 
-    # Popular movies
-    for page in range(1, 3):
-        data = tmdb_get("movie/popular", {"page": page, "language": "en-US"})
-        for m in data.get("results", []):
-            movie_ids.add(m["id"])
-        time.sleep(0.25)
+    print(f"   Fetching popular movies... ({len(movie_ids)} so far)")
+    for page in range(1, min(pages_needed // 3 + 1, 26)):
+        try:
+            data = tmdb_get("movie/popular", {"page": page, "language": "en-US"})
+            for m in data.get("results", []):
+                movie_ids.add(m["id"])
+            time.sleep(0.2)
+        except Exception:
+            break
 
-    # Discover by genre for diversity (Sci-Fi=878, Horror=27, Animation=16, Documentary=99)
-    for genre_id in [878, 27, 16, 99]:
-        data = tmdb_get("discover/movie", {
-            "sort_by": "vote_average.desc",
-            "vote_count.gte": 1000,
-            "with_genres": genre_id,
-            "page": 1,
-            "language": "en-US",
-        })
-        for m in data.get("results", []):
-            movie_ids.add(m["id"])
-        time.sleep(0.25)
+    print(f"   Fetching now playing & upcoming... ({len(movie_ids)} so far)")
+    for endpoint in ["movie/now_playing", "movie/upcoming"]:
+        for page in range(1, 6):
+            try:
+                data = tmdb_get(endpoint, {"page": page, "language": "en-US"})
+                for m in data.get("results", []):
+                    movie_ids.add(m["id"])
+                time.sleep(0.2)
+            except Exception:
+                break
 
-    # Return up to requested count
+    # Genre-based discovery for diversity
+    genre_ids = [28, 12, 16, 35, 80, 99, 18, 14, 27, 36, 10402, 9648, 10749, 878, 53, 10752, 37]
+    print(f"   Fetching by genre ({len(genre_ids)} genres)... ({len(movie_ids)} so far)")
+    for genre_id in genre_ids:
+        pages = 3 if len(movie_ids) < count else 1
+        for page in range(1, pages + 1):
+            try:
+                data = tmdb_get("discover/movie", {
+                    "sort_by": "vote_average.desc",
+                    "vote_count.gte": 500,
+                    "with_genres": genre_id,
+                    "page": page,
+                    "language": "en-US",
+                })
+                for m in data.get("results", []):
+                    movie_ids.add(m["id"])
+                time.sleep(0.2)
+            except Exception:
+                break
+        if len(movie_ids) >= count * 1.2:
+            break
+
+    # Decade-based discovery to fill gaps
+    if len(movie_ids) < count:
+        print(f"   Fetching by decade... ({len(movie_ids)} so far)")
+        for decade_start in range(1970, 2030, 10):
+            for page in range(1, 4):
+                try:
+                    data = tmdb_get("discover/movie", {
+                        "sort_by": "popularity.desc",
+                        "primary_release_date.gte": f"{decade_start}-01-01",
+                        "primary_release_date.lte": f"{decade_start + 9}-12-31",
+                        "vote_count.gte": 300,
+                        "page": page,
+                        "language": "en-US",
+                    })
+                    for m in data.get("results", []):
+                        movie_ids.add(m["id"])
+                    time.sleep(0.2)
+                except Exception:
+                    break
+            if len(movie_ids) >= count:
+                break
+
+    print(f"   Collected {len(movie_ids)} unique movie IDs")
     return list(movie_ids)[:count]
 
 
