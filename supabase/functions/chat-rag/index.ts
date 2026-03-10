@@ -280,17 +280,17 @@ serve(async (req) => {
     );
     const latestQuery = userMessages[userMessages.length - 1]?.content || "";
 
-    // Step 1: Multi-Query Retrieval
-    console.log("Generating query variations for:", latestQuery);
-    const queryVariations = await generateQueryVariations(
+    // Step 1: Multi-Query Retrieval — extract short search terms
+    console.log("Extracting search terms for:", latestQuery);
+    const searchTerms = await extractSearchTerms(
       latestQuery,
       LOVABLE_API_KEY
     );
-    console.log("Query variations:", queryVariations);
+    console.log("Search terms:", searchTerms);
 
     // Step 2: Retrieve sources from TMDB
     console.log("Retrieving sources from TMDB...");
-    const sources = await retrieveSources(queryVariations, TMDB_API_KEY);
+    const sources = await retrieveSources(searchTerms, TMDB_API_KEY);
     console.log(`Retrieved ${sources.length} unique sources`);
 
     // Step 3: Build context from sources
