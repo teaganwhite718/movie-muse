@@ -88,6 +88,7 @@ export function AppSidebar({
 
   const docCount = status.vector_db?.documents || 0;
   const chunkCount = status.vector_db?.chunks || 0;
+  const embeddedCount = status.vector_db?.embedded || 0;
 
   return (
     <Sidebar collapsible="icon">
