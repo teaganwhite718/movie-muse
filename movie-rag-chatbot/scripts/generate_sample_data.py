@@ -270,7 +270,7 @@ def generate_sample_data(count: int = 500):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch movie data from TMDB")
-    parser.add_argument("--count", type=int, default=55, help="Number of movies to fetch")
+    parser.add_argument("--count", type=int, default=500, help="Number of movies to fetch")
     args = parser.parse_args()
 
     print("🎬 Movie RAG Chatbot — TMDB Data Fetcher")
