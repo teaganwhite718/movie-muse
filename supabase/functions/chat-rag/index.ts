@@ -85,7 +85,8 @@ async function searchTMDB(
   const sources: MovieSource[] = [];
 
   try {
-    const searchResp = await fetch(
+    // Try Bearer token first (v4 Read Access Token), fallback to api_key param (v3)
+    let searchResp = await fetch(
       `${TMDB_BASE}/search/movie?query=${encodeURIComponent(query)}&language=en-US&page=1`,
       {
         headers: {
@@ -95,14 +96,28 @@ async function searchTMDB(
       }
     );
 
-    if (!searchResp.ok) return sources;
+    // If Bearer fails, try as v3 API key
+    if (!searchResp.ok) {
+      console.log(`Bearer auth failed (${searchResp.status}), trying api_key param...`);
+      searchResp = await fetch(
+        `${TMDB_BASE}/search/movie?api_key=${tmdbKey}&query=${encodeURIComponent(query)}&language=en-US&page=1`,
+        { headers: { accept: "application/json" } }
+      );
+    }
+
+    if (!searchResp.ok) {
+      const errText = await searchResp.text();
+      console.error(`TMDB search failed [${searchResp.status}]:`, errText);
+      return sources;
+    }
     const searchData = await searchResp.json();
+    console.log(`TMDB search for "${query}" returned ${searchData.results?.length || 0} results`);
     const results = (searchData.results || []).slice(0, 3);
 
     for (const movie of results) {
       // Fetch full details
       try {
-        const detailResp = await fetch(
+        let detailResp = await fetch(
           `${TMDB_BASE}/movie/${movie.id}?append_to_response=credits&language=en-US`,
           {
             headers: {
@@ -111,6 +126,13 @@ async function searchTMDB(
             },
           }
         );
+
+        if (!detailResp.ok) {
+          detailResp = await fetch(
+            `${TMDB_BASE}/movie/${movie.id}?api_key=${tmdbKey}&append_to_response=credits&language=en-US`,
+            { headers: { accept: "application/json" } }
+          );
+        }
 
         if (!detailResp.ok) continue;
         const detail = await detailResp.json();
