@@ -117,7 +117,7 @@ async function searchTMDB(
     for (const movie of results) {
       // Fetch full details
       try {
-        const detailResp = await fetch(
+        let detailResp = await fetch(
           `${TMDB_BASE}/movie/${movie.id}?append_to_response=credits&language=en-US`,
           {
             headers: {
@@ -126,6 +126,13 @@ async function searchTMDB(
             },
           }
         );
+
+        if (!detailResp.ok) {
+          detailResp = await fetch(
+            `${TMDB_BASE}/movie/${movie.id}?api_key=${tmdbKey}&append_to_response=credits&language=en-US`,
+            { headers: { accept: "application/json" } }
+          );
+        }
 
         if (!detailResp.ok) continue;
         const detail = await detailResp.json();
