@@ -1,12 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const TMDB_BASE = "https://api.themoviedb.org/3";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -24,11 +23,43 @@ interface MovieSource {
 }
 
 /**
- * Multi-Query Retrieval: use LLM to extract movie titles and short search
- * keywords from the user question. TMDB search is title-based, so we need
- * clean, short search terms — not full sentences.
+ * Generate embedding for a query using Lovable AI gateway
  */
-async function extractSearchTerms(
+async function generateEmbedding(
+  text: string,
+  apiKey: string
+): Promise<number[] | null> {
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        input: text.slice(0, 8000),
+        model: "text-embedding-3-small",
+        dimensions: 768,
+      }),
+    });
+
+    if (!resp.ok) {
+      console.error(`Embedding failed (${resp.status}):`, await resp.text());
+      return null;
+    }
+
+    const data = await resp.json();
+    return data.data?.[0]?.embedding || null;
+  } catch (e) {
+    console.error("Embedding error:", e);
+    return null;
+  }
+}
+
+/**
+ * Multi-Query: extract search variations from the user query
+ */
+async function extractSearchQueries(
   query: string,
   apiKey: string
 ): Promise<string[]> {
@@ -45,22 +76,12 @@ async function extractSearchTerms(
           messages: [
             {
               role: "system",
-              content:
-                `You extract movie search terms from user questions. The search terms will be used with TMDB's movie search API which matches on movie titles.
+              content: `Generate 3 search query variations for a movie database. Each variation should capture different aspects of the user's question. Output a JSON array of strings, nothing else.
 
-Rules:
-- Extract movie titles mentioned or implied in the question
-- If no specific movie is mentioned, extract genre/theme keywords that could match movie titles
-- Output 2-4 short search terms as a JSON array of strings
-- Each term should be 1-3 words maximum — just titles or key terms
-- Examples:
-  "What is Inception about?" → ["Inception"]
-  "Compare The Godfather and Goodfellas" → ["The Godfather", "Goodfellas"]
-  "Recommend a sci-fi movie" → ["sci-fi", "science fiction", "space"]
-  "Who directed The Dark Knight?" → ["The Dark Knight"]
-  "What themes does Parasite explore?" → ["Parasite"]
-  "Best horror movies" → ["horror", "scary", "thriller"]
-Only output the JSON array, nothing else.`,
+Examples:
+"What is Inception about?" → ["Inception plot overview", "Inception Christopher Nolan sci-fi", "Inception dream heist movie"]
+"Compare The Godfather and Goodfellas" → ["The Godfather crime family", "Goodfellas gangster movie", "Godfather vs Goodfellas comparison"]
+"Best horror movies" → ["top rated horror films", "scary movies critically acclaimed", "horror genre best rated"]`,
             },
             { role: "user", content: query },
           ],
@@ -69,170 +90,66 @@ Only output the JSON array, nothing else.`,
       }
     );
 
-    if (!resp.ok) {
-      console.error("Search term extraction failed:", resp.status);
-      return [query];
-    }
-
+    if (!resp.ok) return [query];
     const data = await resp.json();
     const content = data.choices?.[0]?.message?.content || "[]";
     const match = content.match(/\[[\s\S]*\]/);
     if (match) {
       const terms: string[] = JSON.parse(match[0]);
-      console.log("Extracted search terms:", terms);
       return terms.length > 0 ? terms : [query];
     }
   } catch (e) {
-    console.error("Error extracting search terms:", e);
+    console.error("Query extraction error:", e);
   }
   return [query];
 }
 
 /**
- * Search TMDB for movies matching a query and fetch details.
+ * Retrieve chunks from pgvector using embedding similarity
  */
-async function searchTMDB(
-  query: string,
-  tmdbKey: string
-): Promise<MovieSource[]> {
-  const sources: MovieSource[] = [];
-
-  try {
-    // Try Bearer token first (v4 Read Access Token), fallback to api_key param (v3)
-    let searchResp = await fetch(
-      `${TMDB_BASE}/search/movie?query=${encodeURIComponent(query)}&language=en-US&page=1`,
-      {
-        headers: {
-          Authorization: `Bearer ${tmdbKey}`,
-          accept: "application/json",
-        },
-      }
-    );
-
-    // If Bearer fails, try as v3 API key
-    if (!searchResp.ok) {
-      console.log(`Bearer auth failed (${searchResp.status}), trying api_key param...`);
-      searchResp = await fetch(
-        `${TMDB_BASE}/search/movie?api_key=${tmdbKey}&query=${encodeURIComponent(query)}&language=en-US&page=1`,
-        { headers: { accept: "application/json" } }
-      );
-    }
-
-    if (!searchResp.ok) {
-      const errText = await searchResp.text();
-      console.error(`TMDB search failed [${searchResp.status}]:`, errText);
-      return sources;
-    }
-    const searchData = await searchResp.json();
-    console.log(`TMDB search for "${query}" returned ${searchData.results?.length || 0} results`);
-    const results = (searchData.results || []).slice(0, 3);
-
-    for (const movie of results) {
-      // Fetch full details
-      try {
-        let detailResp = await fetch(
-          `${TMDB_BASE}/movie/${movie.id}?append_to_response=credits&language=en-US`,
-          {
-            headers: {
-              Authorization: `Bearer ${tmdbKey}`,
-              accept: "application/json",
-            },
-          }
-        );
-
-        if (!detailResp.ok) {
-          detailResp = await fetch(
-            `${TMDB_BASE}/movie/${movie.id}?api_key=${tmdbKey}&append_to_response=credits&language=en-US`,
-            { headers: { accept: "application/json" } }
-          );
-        }
-
-        if (!detailResp.ok) continue;
-        const detail = await detailResp.json();
-
-        const directors = (detail.credits?.crew || [])
-          .filter((c: any) => c.job === "Director")
-          .map((c: any) => c.name)
-          .join(", ");
-
-        const cast = (detail.credits?.cast || [])
-          .slice(0, 5)
-          .map((c: any) => `${c.name} as ${c.character}`)
-          .join("; ");
-
-        const genres = (detail.genres || [])
-          .map((g: any) => g.name)
-          .join(", ");
-
-        const text = [
-          `Title: ${detail.title}`,
-          `Year: ${(detail.release_date || "").slice(0, 4)}`,
-          `Director: ${directors || "Unknown"}`,
-          `Genre: ${genres}`,
-          `Runtime: ${detail.runtime || "N/A"} minutes`,
-          `Rating: ${detail.vote_average}/10 (${detail.vote_count} votes)`,
-          `Tagline: "${detail.tagline || ""}"`,
-          ``,
-          `Plot: ${detail.overview || "No overview available."}`,
-          ``,
-          `Cast: ${cast || "No cast info"}`,
-          detail.budget
-            ? `Budget: $${detail.budget.toLocaleString()}`
-            : "",
-          detail.revenue
-            ? `Box Office: $${detail.revenue.toLocaleString()}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n");
-
-        sources.push({
-          movie_title: detail.title || "Unknown",
-          release_year: (detail.release_date || "").slice(0, 4) || "Unknown",
-          genre: genres || "Unknown",
-          director: directors || "Unknown",
-          section: "Full Profile",
-          source: `TMDB ID: ${detail.id}`,
-          text,
-        });
-      } catch {
-        // Skip failed detail fetches
-      }
-    }
-  } catch (e) {
-    console.error("TMDB search error:", e);
-  }
-
-  return sources;
-}
-
-/**
- * Multi-Query Retrieval: search with all query variations,
- * merge and deduplicate by movie title.
- */
-async function retrieveSources(
+async function retrieveChunks(
   queries: string[],
-  tmdbKey: string
+  apiKey: string,
+  supabase: any
 ): Promise<MovieSource[]> {
-  const allSources: MovieSource[] = [];
+  const allResults: any[] = [];
 
   for (const q of queries) {
-    const results = await searchTMDB(q, tmdbKey);
-    allSources.push(...results);
+    const embedding = await generateEmbedding(q, apiKey);
+    if (!embedding) continue;
+
+    const { data, error } = await supabase.rpc("match_movie_chunks", {
+      query_embedding: embedding,
+      match_threshold: 0.2,
+      match_count: 5,
+    });
+
+    if (error) {
+      console.error("Vector search error:", error);
+      continue;
+    }
+    if (data) allResults.push(...data);
   }
 
-  // Deduplicate by movie_title
+  // Deduplicate by chunk id
   const seen = new Set<string>();
   const unique: MovieSource[] = [];
-  for (const src of allSources) {
-    const key = src.movie_title.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(src);
-    }
+  for (const r of allResults) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    unique.push({
+      movie_title: r.movie_title,
+      release_year: r.release_year,
+      genre: r.genre,
+      director: r.director,
+      section: r.section,
+      source: `Vector DB (similarity: ${r.similarity?.toFixed(3)})`,
+      text: r.text,
+    });
   }
 
-  return unique.slice(0, 6); // Return top 6 unique sources
+  // Sort by similarity (highest first) and return top results
+  return unique.slice(0, 8);
 }
 
 serve(async (req) => {
@@ -247,20 +164,35 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY)
       throw new Error("LOVABLE_API_KEY is not configured");
 
-    const TMDB_API_KEY = Deno.env.get("TMDB_API_KEY");
-    if (!TMDB_API_KEY) throw new Error("TMDB_API_KEY is not configured");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error("Supabase credentials not configured");
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Health/status check
     if (action === "status") {
+      const { count: docCount } = await supabase
+        .from("movie_documents")
+        .select("*", { count: "exact", head: true });
+
+      const { count: chunkCount } = await supabase
+        .from("movie_chunks")
+        .select("*", { count: "exact", head: true });
+
       return new Response(
         JSON.stringify({
           status: "ready",
           tmdb_connected: true,
           ai_connected: true,
+          vector_db: {
+            documents: docCount || 0,
+            chunks: chunkCount || 0,
+          },
         }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -280,20 +212,17 @@ serve(async (req) => {
     );
     const latestQuery = userMessages[userMessages.length - 1]?.content || "";
 
-    // Step 1: Multi-Query Retrieval — extract short search terms
-    console.log("Extracting search terms for:", latestQuery);
-    const searchTerms = await extractSearchTerms(
-      latestQuery,
-      LOVABLE_API_KEY
-    );
-    console.log("Search terms:", searchTerms);
+    // Step 1: Multi-Query — generate search variations
+    console.log("Generating query variations for:", latestQuery);
+    const searchQueries = await extractSearchQueries(latestQuery, LOVABLE_API_KEY);
+    console.log("Search queries:", searchQueries);
 
-    // Step 2: Retrieve sources from TMDB
-    console.log("Retrieving sources from TMDB...");
-    const sources = await retrieveSources(searchTerms, TMDB_API_KEY);
-    console.log(`Retrieved ${sources.length} unique sources`);
+    // Step 2: Retrieve from vector database
+    console.log("Retrieving from vector database...");
+    const sources = await retrieveChunks(searchQueries, LOVABLE_API_KEY, supabase);
+    console.log(`Retrieved ${sources.length} chunks from vector DB`);
 
-    // Step 3: Build context from sources
+    // Step 3: Build context from retrieved chunks
     const contextBlock = sources.length
       ? sources
           .map(
@@ -303,8 +232,8 @@ serve(async (req) => {
           .join("\n\n---\n\n")
       : "No relevant movie documents were retrieved for this query.";
 
-    // Step 4: Build final prompt with system instructions, context, and history
-    const systemPrompt = `You are CineBot, a movie knowledge assistant powered by Retrieval-Augmented Generation (RAG).
+    // Step 4: Build final prompt
+    const systemPrompt = `You are CineBot, a movie knowledge assistant powered by Retrieval-Augmented Generation (RAG) with a vector database of 50+ movie documents.
 
 INSTRUCTIONS:
 - Answer questions about movies using ONLY the retrieved source context provided below.
@@ -319,7 +248,6 @@ INSTRUCTIONS:
 RETRIEVED CONTEXT:
 ${contextBlock}`;
 
-    // Keep only last 10 messages for memory
     const recentMessages = messages.slice(-10);
 
     // Step 5: Call LLM with streaming
@@ -365,17 +293,13 @@ ${contextBlock}`;
       throw new Error("AI gateway returned an error");
     }
 
-    // We need to prepend the sources metadata before the stream
-    // Send sources as a custom SSE event first, then stream the AI response
+    // Stream response with sources metadata prepended
     const encoder = new TextEncoder();
     const sourcesEvent = `data: ${JSON.stringify({ type: "sources", sources })}\n\n`;
 
     const readable = new ReadableStream({
       async start(controller) {
-        // Send sources metadata first
         controller.enqueue(encoder.encode(sourcesEvent));
-
-        // Then pipe the AI stream through
         const reader = response.body!.getReader();
         try {
           while (true) {
