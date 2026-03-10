@@ -20,4 +20,8 @@ export interface AppStatus {
   status: "ready" | "offline" | "loading";
   tmdb_connected: boolean;
   ai_connected: boolean;
+  vector_db?: {
+    documents: number;
+    chunks: number;
+  };
 }

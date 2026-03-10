@@ -7,6 +7,8 @@ import {
   MessageSquare,
   CircleDot,
   Info,
+  HardDrive,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -22,8 +24,9 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { checkStatus } from "@/lib/chat-api";
+import { checkStatus, seedMovies } from "@/lib/chat-api";
 import type { AppStatus } from "@/lib/types";
+import { toast } from "sonner";
 
 interface AppSidebarProps {
   messageCount: number;
@@ -52,10 +55,26 @@ export function AppSidebar({
     tmdb_connected: false,
     ai_connected: false,
   });
+  const [isSeeding, setIsSeeding] = useState(false);
 
   useEffect(() => {
     checkStatus().then(setStatus);
   }, []);
+
+  const handleSeed = async () => {
+    setIsSeeding(true);
+    try {
+      const result = await seedMovies(55);
+      toast.success(result.message);
+      // Refresh status
+      const newStatus = await checkStatus();
+      setStatus(newStatus);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Seeding failed");
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   if (collapsed) {
     return (
@@ -66,6 +85,9 @@ export function AppSidebar({
       </Sidebar>
     );
   }
+
+  const docCount = status.vector_db?.documents || 0;
+  const chunkCount = status.vector_db?.chunks || 0;
 
   return (
     <Sidebar collapsible="icon">
@@ -94,9 +116,10 @@ export function AppSidebar({
           <SidebarGroupContent>
             <div className="space-y-2 px-2">
               <StatusRow
-                icon={<Database className="h-3.5 w-3.5" />}
-                label="TMDB Data"
-                connected={status.tmdb_connected}
+                icon={<HardDrive className="h-3.5 w-3.5" />}
+                label="Vector DB"
+                connected={docCount > 0}
+                detail={`${docCount} docs / ${chunkCount} chunks`}
               />
               <StatusRow
                 icon={<Cpu className="h-3.5 w-3.5" />}
@@ -133,6 +156,24 @@ export function AppSidebar({
                   Clear Chat
                 </Button>
               </SidebarMenuItem>
+              {docCount < 50 && (
+                <SidebarMenuItem>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSeed}
+                    disabled={isSeeding}
+                    className="w-full justify-start gap-2 text-xs text-muted-foreground hover:text-primary"
+                  >
+                    {isSeeding ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Database className="h-3.5 w-3.5" />
+                    )}
+                    {isSeeding ? "Seeding..." : "Seed Movie Database"}
+                  </Button>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -164,8 +205,8 @@ export function AppSidebar({
         <div className="flex items-start gap-2 rounded-lg bg-secondary/50 px-3 py-2.5">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
           <p className="text-[10px] leading-relaxed text-muted-foreground">
-            Answers are grounded in retrieved sources via Multi-Query RAG.
-            Built with TMDB, Lovable AI, and ChromaDB.
+            Answers are grounded in retrieved sources via Multi-Query RAG
+            with pgvector. {docCount} movie documents indexed.
           </p>
         </div>
       </SidebarFooter>

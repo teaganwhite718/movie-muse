@@ -2,3 +2,6 @@ project_id = "ecrokekuynunnofkqybr"
 
 [functions.chat-rag]
 verify_jwt = false
+
+[functions.seed-movies]
+verify_jwt = false
