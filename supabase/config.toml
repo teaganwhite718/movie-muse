@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.seed-movies]
 verify_jwt = false
+
+[functions.export-movies]
+verify_jwt = false

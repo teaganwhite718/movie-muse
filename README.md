@@ -1,4 +1,4 @@
-# Cinebot, RAG-Powered Expert Chatbot
+# Welcome to your Lovable project
 
 ## Project info
 
