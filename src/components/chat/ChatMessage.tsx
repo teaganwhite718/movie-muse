@@ -1,7 +1,6 @@
 import { memo } from "react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Film, User } from "lucide-react";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
 import { SourceCitations } from "./SourceCitations";
@@ -46,7 +45,7 @@ export const ChatMessage = memo(function ChatMessage({
         </span>
 
         <div className="prose prose-sm prose-invert max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-a:text-primary prose-code:text-primary/80 prose-code:bg-secondary prose-code:rounded prose-code:px-1">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown>
             {message.content}
           </ReactMarkdown>
           {isStreaming && (
