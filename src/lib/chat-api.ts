@@ -1,6 +1,8 @@
 import type { ChatMessage, MovieSource, AppStatus } from "./types";
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-rag`;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const CHAT_URL = `${SUPABASE_URL}/functions/v1/chat-rag`;
+const SEED_URL = `${SUPABASE_URL}/functions/v1/seed-movies`;
 
 interface StreamCallbacks {
   onDelta: (text: string) => void;
