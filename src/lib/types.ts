@@ -23,5 +23,6 @@ export interface AppStatus {
   vector_db?: {
     documents: number;
     chunks: number;
+    embedded: number;
   };
 }

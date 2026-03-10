@@ -119,8 +119,8 @@ export function AppSidebar({
               <StatusRow
                 icon={<HardDrive className="h-3.5 w-3.5" />}
                 label="Vector DB"
-                connected={docCount > 0}
-                detail={`${docCount} docs / ${chunkCount} chunks`}
+                connected={embeddedCount > 0}
+                detail={`${docCount} docs / ${embeddedCount} embedded`}
               />
               <StatusRow
                 icon={<Cpu className="h-3.5 w-3.5" />}
