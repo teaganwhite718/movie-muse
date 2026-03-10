@@ -1,7 +1,6 @@
 import { memo } from "react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Film, User } from "lucide-react";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
 import { SourceCitations } from "./SourceCitations";
