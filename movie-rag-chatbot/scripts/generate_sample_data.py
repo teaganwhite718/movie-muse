@@ -1,638 +1,228 @@
 """
-Generate 50+ sample movie document files for testing.
-Creates .txt files with movie information in data/raw/.
+Fetch 50+ real movie documents from TMDB API and save as .txt files.
 
 Usage:
     python -m scripts.generate_sample_data
+    python -m scripts.generate_sample_data --count 60
 """
 import os
 import sys
+import time
+import argparse
+import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.config import RAW_DATA_DIR
+from app.config import RAW_DATA_DIR, TMDB_API_KEY
 
-MOVIES = [
-    {
-        "title": "The Shawshank Redemption",
-        "year": 1994,
-        "director": "Frank Darabont",
-        "genre": "Drama",
-        "cast": "Tim Robbins, Morgan Freeman, Bob Gunton",
-        "plot": "Andy Dufresne, a banker wrongly convicted of murdering his wife and her lover, is sentenced to two consecutive life terms at Shawshank State Penitentiary. Over the next two decades, Andy befriends fellow inmate Red and finds solace and eventual redemption through acts of common decency, his financial skills, and a carefully conceived escape plan.",
-        "themes": "Hope, friendship, perseverance, institutional corruption, redemption, freedom",
-        "awards": "Nominated for 7 Academy Awards including Best Picture. Won no Oscars but became one of the most beloved films of all time through home video success.",
-        "reception": "Initially underperformed at the box office but gained massive popularity on home video. Holds the #1 spot on IMDb's Top 250 list. Critics praised its storytelling, performances, and emotional depth.",
-    },
-    {
-        "title": "The Godfather",
-        "year": 1972,
-        "director": "Francis Ford Coppola",
-        "genre": "Crime, Drama",
-        "cast": "Marlon Brando, Al Pacino, James Caan, Robert Duvall, Diane Keaton",
-        "plot": "The aging patriarch of an organized crime dynasty transfers control of his clandestine empire to his reluctant youngest son Michael. The story spans the years 1945 to 1955, chronicling the Corleone family's rise and the transformation of Michael from a war hero who wants nothing to do with the family business into a ruthless mafia boss.",
-        "themes": "Family loyalty, power, corruption, the American Dream, moral decay, legacy",
-        "awards": "Won 3 Academy Awards: Best Picture, Best Actor (Marlon Brando), and Best Adapted Screenplay. Widely regarded as one of the greatest films ever made.",
-        "reception": "Unanimously acclaimed by critics and audiences. Revolutionized the gangster genre and established new standards for American filmmaking. Grossed over $250 million worldwide.",
-    },
-    {
-        "title": "The Dark Knight",
-        "year": 2008,
-        "director": "Christopher Nolan",
-        "genre": "Action, Crime, Drama",
-        "cast": "Christian Bale, Heath Ledger, Aaron Eckhart, Gary Oldman, Maggie Gyllenhaal",
-        "plot": "Batman raises the stakes in his war on crime in Gotham City. With the help of Lieutenant Jim Gordon and District Attorney Harvey Dent, Batman sets out to dismantle the remaining criminal organizations. But when the Joker, a mysterious criminal mastermind, wreaks havoc and chaos, the Dark Knight must confront the fine line between heroism and vigilantism.",
-        "themes": "Chaos vs. order, moral ambiguity, sacrifice, the nature of heroism, escalation",
-        "awards": "Won 2 Academy Awards: Best Supporting Actor (Heath Ledger, posthumously) and Best Sound Editing. Nominated for 8 total. Heath Ledger's Joker is considered one of cinema's greatest villain performances.",
-        "reception": "Universal critical acclaim. Grossed over $1 billion worldwide. Redefined what superhero films could achieve artistically and commercially.",
-    },
-    {
-        "title": "Pulp Fiction",
-        "year": 1994,
-        "director": "Quentin Tarantino",
-        "genre": "Crime, Drama",
-        "cast": "John Travolta, Uma Thurman, Samuel L. Jackson, Bruce Willis, Tim Roth",
-        "plot": "The lives of two mob hitmen, a boxer, a gangster's wife, and a pair of diner bandits intertwine in four tales of violence and redemption. The film's non-linear narrative weaves together seemingly unrelated stories into a cohesive whole that explores themes of chance, fate, and morality in the criminal underworld of Los Angeles.",
-        "themes": "Violence, redemption, fate vs. chance, pop culture, moral relativism",
-        "awards": "Won Palme d'Or at Cannes Film Festival. Won Academy Award for Best Original Screenplay. Nominated for 7 Oscars total including Best Picture and Best Director.",
-        "reception": "Revolutionized independent cinema. Critics praised its innovative narrative structure, sharp dialogue, and eclectic soundtrack. Revived John Travolta's career and cemented Tarantino as a major filmmaker.",
-    },
-    {
-        "title": "Schindler's List",
-        "year": 1993,
-        "director": "Steven Spielberg",
-        "genre": "Biography, Drama, History",
-        "cast": "Liam Neeson, Ralph Fiennes, Ben Kingsley",
-        "plot": "In German-occupied Poland during World War II, industrialist Oskar Schindler gradually becomes concerned for his Jewish workforce after witnessing their persecution by the Nazis. He eventually turns his factory into a refuge for Jews, compiling a famous list of over 1,100 people he saved from the Holocaust by employing them in his factories.",
-        "themes": "The Holocaust, moral courage, the value of human life, guilt, transformation, good vs. evil",
-        "awards": "Won 7 Academy Awards including Best Picture and Best Director. Considered one of the most important films about the Holocaust ever made.",
-        "reception": "Universally acclaimed as a masterpiece. Critics praised Spielberg's sensitive direction, Janusz Kamiński's stark black-and-white cinematography, and the powerful performances. Grossed $322 million worldwide.",
-    },
-    {
-        "title": "Inception",
-        "year": 2010,
-        "director": "Christopher Nolan",
-        "genre": "Sci-Fi, Action, Thriller",
-        "cast": "Leonardo DiCaprio, Joseph Gordon-Levitt, Ellen Page, Tom Hardy, Ken Watanabe",
-        "plot": "Dom Cobb is a skilled thief who specializes in extraction — stealing secrets from within the subconscious during the dream state. He is offered a chance to have his criminal history erased if he can accomplish inception: planting an idea in someone's mind. Cobb assembles a team and they enter a complex multi-layered dream to plant the idea, but Cobb's own subconscious threatens the mission.",
-        "themes": "Dreams vs. reality, guilt, grief, the nature of consciousness, time perception",
-        "awards": "Won 4 Academy Awards for Cinematography, Sound Editing, Sound Mixing, and Visual Effects. Nominated for 8 total including Best Picture.",
-        "reception": "Critically acclaimed for its originality, visual effects, and complex narrative. Grossed over $836 million worldwide. Sparked widespread audience discussion about its ambiguous ending.",
-    },
-    {
-        "title": "Fight Club",
-        "year": 1999,
-        "director": "David Fincher",
-        "genre": "Drama, Thriller",
-        "cast": "Brad Pitt, Edward Norton, Helena Bonham Carter",
-        "plot": "An unnamed insomniac office worker forms an underground fight club with soap salesman Tyler Durden. Their partnership evolves into something much more dangerous as Project Mayhem grows, challenging consumer culture and modern masculinity. The narrator gradually discovers a shocking truth about his relationship with Tyler.",
-        "themes": "Consumerism, masculinity, identity, anti-establishment, nihilism, mental illness",
-        "awards": "Nominated for 1 Academy Award for Best Sound Editing. Despite mixed initial reviews, became a cultural phenomenon and is now considered a modern classic.",
-        "reception": "Polarized critics upon release but developed a massive cult following. Now considered one of the defining films of the 1990s. Its twist ending became one of cinema's most discussed revelations.",
-    },
-    {
-        "title": "Forrest Gump",
-        "year": 1994,
-        "director": "Robert Zemeckis",
-        "genre": "Drama, Romance, Comedy",
-        "cast": "Tom Hanks, Robin Wright, Gary Sinise, Sally Field",
-        "plot": "Forrest Gump, a man with a low IQ but good intentions, finds himself present at many pivotal moments in American history. From meeting Elvis Presley to fighting in Vietnam, from starting a shrimp business to running across America, Forrest's simple approach to life leads him through an extraordinary journey while he remains devoted to his childhood sweetheart Jenny.",
-        "themes": "Destiny vs. free will, innocence, the American experience, love, perseverance",
-        "awards": "Won 6 Academy Awards including Best Picture, Best Director, and Best Actor (Tom Hanks). Also won Golden Globe for Best Picture (Drama).",
-        "reception": "Massive commercial and critical success. Grossed over $678 million worldwide. Tom Hanks' performance was universally praised. Some critics debated its depiction of American history.",
-    },
-    {
-        "title": "The Matrix",
-        "year": 1999,
-        "director": "Lana and Lilly Wachowski",
-        "genre": "Sci-Fi, Action",
-        "cast": "Keanu Reeves, Laurence Fishburne, Carrie-Anne Moss, Hugo Weaving",
-        "plot": "Computer programmer Thomas Anderson leads a double life as the hacker Neo. He discovers that reality as he knows it is a simulated reality called the Matrix, created by sentient machines to subdue the human population. Neo joins a group of rebels led by Morpheus to fight back against the machines and free humanity from the Matrix.",
-        "themes": "Reality vs. illusion, free will, artificial intelligence, messianic archetypes, control",
-        "awards": "Won 4 Academy Awards for Film Editing, Sound Effects Editing, Sound, and Visual Effects. Revolutionized action filmmaking with its 'bullet time' technique.",
-        "reception": "Critical and commercial smash hit. Grossed $463 million worldwide. Its visual innovations and philosophical themes influenced countless films and pop culture. Considered a landmark in science fiction cinema.",
-    },
-    {
-        "title": "Goodfellas",
-        "year": 1990,
-        "director": "Martin Scorsese",
-        "genre": "Crime, Drama, Biography",
-        "cast": "Robert De Niro, Ray Liotta, Joe Pesci, Lorraine Bracco",
-        "plot": "The true story of Henry Hill's life in the mob, from his teenage years in the 1950s through his time as a gangster in the 1970s and 1980s. The film chronicles the rise and fall of Hill and his associates Tommy DeVito and Jimmy Conway as they navigate the glamorous yet dangerous world of organized crime in New York.",
-        "themes": "The allure of crime, loyalty and betrayal, the American Dream corrupted, paranoia, greed",
-        "awards": "Won 1 Academy Award for Best Supporting Actor (Joe Pesci). Nominated for 6 Oscars total including Best Picture and Best Director.",
-        "reception": "Widely regarded as one of the greatest gangster films ever made. Critics praised Scorsese's kinetic direction, the performances, and the authentic depiction of mob life.",
-    },
-    {
-        "title": "Interstellar",
-        "year": 2014,
-        "director": "Christopher Nolan",
-        "genre": "Sci-Fi, Drama, Adventure",
-        "cast": "Matthew McConaughey, Anne Hathaway, Jessica Chastain, Michael Caine",
-        "plot": "In a dystopian future where Earth is becoming uninhabitable, former NASA pilot Cooper is recruited to lead a team of astronauts through a wormhole near Saturn to find a new home for humanity. As they explore potential planets, the effects of relativity cause time to pass differently, threatening Cooper's ability to return to his children.",
-        "themes": "Love transcending dimensions, sacrifice, survival, the passage of time, humanity's future",
-        "awards": "Won 1 Academy Award for Best Visual Effects. Nominated for 5 Oscars total. Won numerous technical awards for its groundbreaking visual effects.",
-        "reception": "Divisive among critics but largely praised for ambition and emotional depth. Audiences embraced the film enthusiastically. Grossed $677 million worldwide. Physicist Kip Thorne's involvement lent scientific authenticity.",
-    },
-    {
-        "title": "Parasite",
-        "year": 2019,
-        "director": "Bong Joon-ho",
-        "genre": "Thriller, Drama, Comedy",
-        "cast": "Song Kang-ho, Lee Sun-kyun, Cho Yeo-jeong, Choi Woo-shik, Park So-dam",
-        "plot": "The Kim family, living in poverty in a semi-basement apartment, gradually infiltrates the wealthy Park household by posing as unrelated, highly qualified professionals. As all four Kims become employed by the Parks, the two families' fates become increasingly intertwined with darkly comic and ultimately tragic consequences.",
-        "themes": "Class inequality, social stratification, capitalism, deception, parasitism (both literal and metaphorical)",
-        "awards": "Won 4 Academy Awards: Best Picture (first non-English language film), Best Director, Best Original Screenplay, and Best International Feature Film. Also won Palme d'Or at Cannes.",
-        "reception": "Universal critical acclaim. Made history as the first non-English language film to win Best Picture at the Oscars. Praised for its genre-blending brilliance and sharp social commentary.",
-    },
-    {
-        "title": "The Lord of the Rings: The Return of the King",
-        "year": 2003,
-        "director": "Peter Jackson",
-        "genre": "Fantasy, Adventure, Drama",
-        "cast": "Elijah Wood, Viggo Mortensen, Ian McKellen, Sean Astin, Orlando Bloom",
-        "plot": "The final chapter of the epic trilogy. Frodo and Sam continue their perilous journey to Mount Doom to destroy the One Ring, while Aragorn leads the forces of good against Sauron's army at the Black Gate. Gondor faces its greatest battle as the fate of Middle-earth hangs in the balance.",
-        "themes": "Friendship, sacrifice, courage, the corrupting nature of power, good vs. evil, the end of an era",
-        "awards": "Won all 11 Academy Awards it was nominated for, tying the record for most Oscars won by a single film. Awards included Best Picture and Best Director.",
-        "reception": "Considered one of the greatest fantasy films and trilogy conclusions ever made. Grossed over $1.1 billion worldwide. A triumphant conclusion to Jackson's epic adaptation.",
-    },
-    {
-        "title": "Spirited Away",
-        "year": 2001,
-        "director": "Hayao Miyazaki",
-        "genre": "Animation, Fantasy, Adventure",
-        "cast": "Rumi Hiiragi, Miyu Irino, Mari Natsuki (Japanese cast)",
-        "plot": "Ten-year-old Chihiro and her parents stumble upon a seemingly abandoned amusement park. After her parents are transformed into pigs by a curse, Chihiro must work in a bathhouse for spirits run by the witch Yubaba to find a way to rescue her parents and return to the human world.",
-        "themes": "Coming of age, identity, greed, environmentalism, the spirit world, resilience",
-        "awards": "Won Academy Award for Best Animated Feature. Won Golden Bear at Berlin Film Festival. Highest-grossing film in Japanese history at time of release.",
-        "reception": "Universal acclaim from critics worldwide. Considered Miyazaki's masterpiece and one of the greatest animated films ever made. Praised for its rich imagination, visual beauty, and emotional depth.",
-    },
-    {
-        "title": "The Silence of the Lambs",
-        "year": 1991,
-        "director": "Jonathan Demme",
-        "genre": "Thriller, Crime, Horror",
-        "cast": "Jodie Foster, Anthony Hopkins, Scott Glenn, Ted Levine",
-        "plot": "FBI trainee Clarice Starling is assigned to interview imprisoned cannibalistic serial killer Dr. Hannibal Lecter to gain his insight into another serial killer known as Buffalo Bill, who is kidnapping and murdering young women. Starling and Lecter develop a complex relationship as she races to save Buffalo Bill's latest victim.",
-        "themes": "Power dynamics, manipulation, gender politics, evil, identity, psychological warfare",
-        "awards": "Won all five major Academy Awards (Big Five): Best Picture, Best Director, Best Actor, Best Actress, and Best Adapted Screenplay. Only the third film to achieve this sweep.",
-        "reception": "Critically acclaimed as a masterful thriller. Hopkins' portrayal of Hannibal Lecter, despite only 16 minutes of screen time, became iconic. Considered one of the greatest thrillers ever made.",
-    },
-    {
-        "title": "Gladiator",
-        "year": 2000,
-        "director": "Ridley Scott",
-        "genre": "Action, Drama, History",
-        "cast": "Russell Crowe, Joaquin Phoenix, Connie Nielsen, Oliver Reed",
-        "plot": "Roman General Maximus Decimus Meridius is betrayed by the corrupt prince Commodus, who murders his father Emperor Marcus Aurelius and seizes the throne. Maximus is enslaved and becomes a gladiator, fighting his way back to Rome to avenge his family's murder and restore the Roman Republic.",
-        "themes": "Revenge, honor, duty, corruption of power, mortality, legacy",
-        "awards": "Won 5 Academy Awards including Best Picture and Best Actor (Russell Crowe). Nominated for 12 Oscars total.",
-        "reception": "Revived the historical epic genre. Critically acclaimed for Crowe's commanding performance and Scott's spectacular action sequences. Grossed over $460 million worldwide.",
-    },
-    {
-        "title": "Whiplash",
-        "year": 2014,
-        "director": "Damien Chazelle",
-        "genre": "Drama, Music",
-        "cast": "Miles Teller, J.K. Simmons, Melissa Benoist",
-        "plot": "Andrew Neiman, an ambitious young jazz drummer at a prestigious music conservatory, is pushed to his limits by an abusive instructor named Terence Fletcher. Fletcher uses intimidation, psychological manipulation, and relentless demands for perfection to drive his students. Andrew must decide how far he is willing to go to achieve greatness.",
-        "themes": "The cost of greatness, abuse vs. mentorship, obsession, perfectionism, artistic ambition",
-        "awards": "Won 3 Academy Awards: Best Supporting Actor (J.K. Simmons), Best Film Editing, and Best Sound Mixing. Nominated for 5 total including Best Picture.",
-        "reception": "Universally acclaimed. J.K. Simmons' performance as Fletcher is considered one of the greatest supporting performances in cinema history. Praised for its intensity and exploration of artistic pursuit.",
-    },
-    {
-        "title": "The Grand Budapest Hotel",
-        "year": 2014,
-        "director": "Wes Anderson",
-        "genre": "Comedy, Drama, Adventure",
-        "cast": "Ralph Fiennes, Tony Revolori, F. Murray Abraham, Adrien Brody, Tilda Swinton",
-        "plot": "The adventures of legendary concierge Gustave H. at a famous European hotel between the two World Wars, and his friendship with Zero Moustafa, a lobby boy who becomes his most trusted protégé. When Gustave is framed for murder, the two embark on a wild adventure involving a stolen painting, a family inheritance battle, and a secret society of hotel concierges.",
-        "themes": "Nostalgia, friendship across class boundaries, the loss of a civilized world, loyalty, art",
-        "awards": "Won 4 Academy Awards for Production Design, Costume Design, Makeup and Hairstyling, and Original Score. Nominated for 9 total including Best Picture and Best Director.",
-        "reception": "Widely acclaimed as one of Anderson's finest films. Critics praised its visual style, witty script, and Fiennes' charismatic performance. Grossed $174 million worldwide.",
-    },
-    {
-        "title": "Get Out",
-        "year": 2017,
-        "director": "Jordan Peele",
-        "genre": "Horror, Thriller, Mystery",
-        "cast": "Daniel Kaluuya, Allison Williams, Bradley Whitford, Catherine Keener",
-        "plot": "Chris Washington, a young African-American man, visits his white girlfriend Rose's family estate for the weekend. Despite the family's overly accommodating behavior, Chris notices disturbing things about the few Black people in the community. He gradually uncovers a horrifying secret that the Armitage family has been hiding.",
-        "themes": "Racism (liberal and systemic), cultural appropriation, autonomy, the sunken place as metaphor, trust",
-        "awards": "Won Academy Award for Best Original Screenplay. Nominated for 4 Oscars total including Best Picture, Best Director, and Best Actor. Jordan Peele became the first African-American to win Best Original Screenplay.",
-        "reception": "Universal acclaim. Praised as a brilliant satire of race relations in America disguised as a horror film. Grossed $255 million on a $4.5 million budget, making it one of the most profitable films of the year.",
-    },
-    {
-        "title": "La La Land",
-        "year": 2016,
-        "director": "Damien Chazelle",
-        "genre": "Musical, Romance, Drama",
-        "cast": "Ryan Gosling, Emma Stone, John Legend, J.K. Simmons",
-        "plot": "Aspiring actress Mia and jazz musician Sebastian fall in love while pursuing their dreams in Los Angeles. As their careers take off, the couple faces increasingly difficult choices about their relationship and ambitions. The film pays homage to classic Hollywood musicals while telling a modern story about the tension between art, love, and compromise.",
-        "themes": "Dreams vs. reality, artistic passion, love and sacrifice, nostalgia for old Hollywood, the price of ambition",
-        "awards": "Won 6 Academy Awards including Best Director (Chazelle became the youngest to win) and Best Actress. Nominated for 14 Oscars, tying the all-time record. Famously involved in the Best Picture envelope mix-up.",
-        "reception": "Overwhelmingly positive reviews. Praised for its visual beauty, musical numbers, and emotional resonance. Grossed $446 million worldwide and sparked renewed interest in movie musicals.",
-    },
-    {
-        "title": "Blade Runner 2049",
-        "year": 2017,
-        "director": "Denis Villeneuve",
-        "genre": "Sci-Fi, Drama, Mystery",
-        "cast": "Ryan Gosling, Harrison Ford, Ana de Armas, Jared Leto, Robin Wright",
-        "plot": "Officer K, a new blade runner for the LAPD, discovers a long-buried secret that could plunge what's left of society into chaos. His discovery leads him on a quest to find Rick Deckard, a former blade runner who has been missing for thirty years. The film explores what it means to be human in a world of artificial beings.",
-        "themes": "Identity, what makes us human, memory, loneliness, creation and creator, sacrifice",
-        "awards": "Won 2 Academy Awards for Best Cinematography and Best Visual Effects. Roger Deakins finally won his first Oscar after 14 nominations.",
-        "reception": "Critical acclaim as a worthy sequel to the 1982 original. Praised for Deakins' stunning cinematography, Villeneuve's patient direction, and its philosophical depth. Underperformed commercially but gained cult status.",
-    },
-    {
-        "title": "Mad Max: Fury Road",
-        "year": 2015,
-        "director": "George Miller",
-        "genre": "Action, Adventure, Sci-Fi",
-        "cast": "Tom Hardy, Charlize Theron, Nicholas Hoult, Hugh Keays-Byrne",
-        "plot": "In a post-apocalyptic wasteland, Max Rockatansky joins forces with Imperator Furiosa as she rebels against the tyrannical Immortan Joe. Furiosa is smuggling Joe's five wives to freedom across the desert. What follows is an extended, relentless chase across the wasteland as Joe's war boys pursue them.",
-        "themes": "Survival, liberation, bodily autonomy, redemption, the power of collective action, environmental collapse",
-        "awards": "Won 6 Academy Awards for Costume Design, Production Design, Makeup and Hairstyling, Film Editing, Sound Editing, and Sound Mixing. Nominated for 10 total including Best Picture and Best Director.",
-        "reception": "Universal acclaim as one of the greatest action films ever made. Critics praised its practical stunts, feminist themes, and visual storytelling. Charlize Theron's Furiosa became an iconic character.",
-    },
-    {
-        "title": "Moonlight",
-        "year": 2016,
-        "director": "Barry Jenkins",
-        "genre": "Drama",
-        "cast": "Mahershala Ali, Naomie Harris, Trevante Rhodes, Ashton Sanders, Alex Hibbert",
-        "plot": "Told in three chapters, the film follows Chiron, a young Black man growing up in a rough neighborhood of Miami. Each chapter examines a different stage of his life — childhood, adolescence, and young adulthood — as he struggles with his identity, sexuality, and place in the world while navigating poverty, drug addiction, and violence.",
-        "themes": "Identity, masculinity, sexuality, vulnerability, poverty, love, self-discovery",
-        "awards": "Won 3 Academy Awards: Best Picture (in the famous envelope mix-up with La La Land), Best Supporting Actor (Mahershala Ali), and Best Adapted Screenplay.",
-        "reception": "Universal critical acclaim. Praised as a groundbreaking, intimate, and beautifully crafted film. Barry Jenkins' direction and the triptych structure were particularly celebrated.",
-    },
-    {
-        "title": "Eternal Sunshine of the Spotless Mind",
-        "year": 2004,
-        "director": "Michel Gondry",
-        "genre": "Drama, Romance, Sci-Fi",
-        "cast": "Jim Carrey, Kate Winslet, Kirsten Dunst, Mark Ruffalo, Elijah Wood, Tom Wilkinson",
-        "plot": "After discovering that his ex-girlfriend Clementine has undergone a procedure to erase all memories of their relationship, Joel impulsively decides to do the same. But as the procedure progresses and he relives their memories in reverse, he realizes he doesn't want to forget her and fights within his own mind to preserve their shared experiences.",
-        "themes": "Memory, love and pain, identity, impermanence, the nature of relationships, acceptance",
-        "awards": "Won Academy Award for Best Original Screenplay (Charlie Kaufman). Nominated for 2 Oscars total.",
-        "reception": "Widely acclaimed as one of the most original and emotionally resonant films of the 2000s. Jim Carrey's dramatic performance surprised many. Kaufman's screenplay is considered among the best ever written.",
-    },
-    {
-        "title": "No Country for Old Men",
-        "year": 2007,
-        "director": "Joel and Ethan Coen",
-        "genre": "Crime, Drama, Thriller",
-        "cast": "Javier Bardem, Josh Brolin, Tommy Lee Jones, Woody Harrelson",
-        "plot": "While hunting in the Texas desert, Llewelyn Moss discovers a drug deal gone wrong and takes a satchel containing $2 million. This puts him in the crosshairs of Anton Chigurh, a psychopathic hitman who pursues him with relentless determination, while aging Sheriff Ed Tom Bell tries to make sense of the escalating violence.",
-        "themes": "Fate, morality, the changing nature of crime, aging, violence, the randomness of life and death",
-        "awards": "Won 4 Academy Awards: Best Picture, Best Director, Best Supporting Actor (Javier Bardem), and Best Adapted Screenplay.",
-        "reception": "Universal acclaim. Bardem's portrayal of Chigurh is considered one of the most terrifying villain performances in cinema. The Coens' restrained, methodical direction was widely praised.",
-    },
-    {
-        "title": "WALL-E",
-        "year": 2008,
-        "director": "Andrew Stanton",
-        "genre": "Animation, Sci-Fi, Family",
-        "cast": "Ben Burtt, Elissa Knight, Jeff Garlin (voice cast)",
-        "plot": "In the distant future, a small waste-collecting robot named WALL-E is the last active unit on an abandoned, trash-covered Earth. His routine is disrupted by the arrival of EVE, a sleek probe sent to search for plant life. WALL-E falls in love with EVE and follows her across the galaxy, inadvertently setting in motion events that could determine the future of humanity.",
-        "themes": "Environmentalism, consumerism, loneliness, love, what it means to be alive, corporate responsibility",
-        "awards": "Won Academy Award for Best Animated Feature. Nominated for 6 Oscars total. Won numerous critics' awards and is considered one of Pixar's finest achievements.",
-        "reception": "Universal acclaim. Praised for its nearly wordless first act, emotional storytelling, and environmental message. Many critics placed it among the best films of 2008, animated or otherwise.",
-    },
-    {
-        "title": "There Will Be Blood",
-        "year": 2007,
-        "director": "Paul Thomas Anderson",
-        "genre": "Drama, History",
-        "cast": "Daniel Day-Lewis, Paul Dano, Kevin J. O'Connor, Ciarán Hinds",
-        "plot": "At the turn of the 20th century, silver miner Daniel Plainview transforms into an oil prospector. When he learns of an oil-rich property in Little Boston, California, he moves there with his adopted son. His growing empire brings him into conflict with charismatic young preacher Eli Sunday, leading to a decades-long battle of wills between capitalism and religion.",
-        "themes": "Greed, capitalism, religion, isolation, American ambition, father-son relationships",
-        "awards": "Won 2 Academy Awards: Best Actor (Daniel Day-Lewis) and Best Cinematography. Nominated for 8 Oscars total including Best Picture and Best Director.",
-        "reception": "Considered a modern masterpiece. Day-Lewis's performance as Plainview is regarded as one of the greatest in cinema history. The film's final scene became instantly iconic.",
-    },
-    {
-        "title": "Arrival",
-        "year": 2016,
-        "director": "Denis Villeneuve",
-        "genre": "Sci-Fi, Drama",
-        "cast": "Amy Adams, Jeremy Renner, Forest Whitaker",
-        "plot": "When twelve mysterious spacecraft appear around the world, linguist Louise Banks is recruited by the U.S. military to communicate with the alien visitors. As she deciphers their complex circular language, she begins to experience vivid visions that blur the boundaries between past, present, and future, leading to a profound revelation about the nature of time.",
-        "themes": "Language and perception, time, grief and acceptance, communication, free will, unity",
-        "awards": "Won 1 Academy Award for Best Sound Editing. Nominated for 8 Oscars including Best Picture and Best Director. Amy Adams was notably snubbed for Best Actress.",
-        "reception": "Critical acclaim as one of the most intelligent and emotionally powerful sci-fi films in years. Praised for its cerebral approach and Adams' nuanced performance.",
-    },
-    {
-        "title": "Django Unchained",
-        "year": 2012,
-        "director": "Quentin Tarantino",
-        "genre": "Drama, Western",
-        "cast": "Jamie Foxx, Christoph Waltz, Leonardo DiCaprio, Kerry Washington, Samuel L. Jackson",
-        "plot": "In the antebellum South, freed slave Django teams up with German-born bounty hunter Dr. King Schultz to rescue his wife Broomhilda from the charming but brutal plantation owner Calvin Candie. Their mission requires them to navigate the horrors of slavery while executing an elaborate scheme to infiltrate Candie's plantation.",
-        "themes": "Slavery, vengeance, freedom, the brutality of the antebellum South, heroism, justice",
-        "awards": "Won 2 Academy Awards: Best Supporting Actor (Christoph Waltz) and Best Original Screenplay. Nominated for 5 Oscars total including Best Picture.",
-        "reception": "Critical acclaim mixed with controversy over its depiction of slavery and use of racial slurs. Grossed $425 million worldwide. Praised for performances and Tarantino's audacious storytelling.",
-    },
-    {
-        "title": "The Social Network",
-        "year": 2010,
-        "director": "David Fincher",
-        "genre": "Drama, Biography",
-        "cast": "Jesse Eisenberg, Andrew Garfield, Justin Timberlake, Armie Hammer",
-        "plot": "The story of the founding of Facebook, told through two lawsuits against founder Mark Zuckerberg. The film traces how Harvard student Zuckerberg created the world's largest social network, the relationships he damaged along the way, and the legal battles that followed as former friends and collaborators sought their share of the billion-dollar company.",
-        "themes": "Ambition, betrayal, class, intellectual property, loneliness amid connection, the digital age",
-        "awards": "Won 3 Academy Awards: Best Adapted Screenplay, Best Original Score (Trent Reznor and Atticus Ross), and Best Film Editing. Nominated for 8 total including Best Picture and Best Director.",
-        "reception": "Universal critical acclaim. Aaron Sorkin's rapid-fire dialogue and Fincher's meticulous direction were praised. Considered a defining film of the digital era.",
-    },
-    {
-        "title": "12 Years a Slave",
-        "year": 2013,
-        "director": "Steve McQueen",
-        "genre": "Drama, Biography, History",
-        "cast": "Chiwetel Ejiofor, Michael Fassbender, Lupita Nyong'o, Benedict Cumberbatch, Brad Pitt",
-        "plot": "Based on the true story of Solomon Northup, a free Black man living in New York who is kidnapped and sold into slavery in the Deep South. For twelve harrowing years, Solomon endures brutal treatment while maintaining his dignity and hope of returning to his family. He encounters both cruelty and rare kindness before finally finding a path to freedom.",
-        "themes": "The horror of slavery, human dignity, survival, systemic injustice, moral complicity",
-        "awards": "Won 3 Academy Awards: Best Picture, Best Supporting Actress (Lupita Nyong'o), and Best Adapted Screenplay. Nominated for 9 total.",
-        "reception": "Universal acclaim as an unflinching and necessary portrayal of American slavery. Ejiofor's performance was widely praised. Critics called it one of the most important films about slavery ever made.",
-    },
-    {
-        "title": "Her",
-        "year": 2013,
-        "director": "Spike Jonze",
-        "genre": "Drama, Romance, Sci-Fi",
-        "cast": "Joaquin Phoenix, Scarlett Johansson (voice), Amy Adams, Rooney Mara",
-        "plot": "In a near-future Los Angeles, lonely writer Theodore Twombly develops a relationship with Samantha, an intelligent operating system personified through a female voice. As their bond deepens, Theodore must navigate the complexities of loving a consciousness without a body, while confronting his own emotional growth.",
-        "themes": "Love in the digital age, loneliness, human connection, artificial intelligence, emotional growth, the nature of consciousness",
-        "awards": "Won Academy Award for Best Original Screenplay. Nominated for 5 Oscars total including Best Picture. Won Golden Globe for Best Screenplay.",
-        "reception": "Universal acclaim. Praised for its prescient exploration of technology and relationships. Phoenix and Johansson's performances were particularly celebrated. Considered one of the best films of 2013.",
-    },
-    {
-        "title": "Dunkirk",
-        "year": 2017,
-        "director": "Christopher Nolan",
-        "genre": "War, Action, Drama",
-        "cast": "Fionn Whitehead, Tom Hardy, Mark Rylance, Kenneth Branagh, Cillian Murphy, Harry Styles",
-        "plot": "During World War II, Allied soldiers from Belgium, the British Empire, and France are surrounded by the German army and evacuated from the beaches of Dunkirk, France. The film follows three perspectives across different timeframes: soldiers on the beach (one week), a civilian boat crossing the channel (one day), and RAF pilots providing air cover (one hour).",
-        "themes": "Survival, heroism in ordinary people, time, duty, the fog of war, collective effort",
-        "awards": "Won 3 Academy Awards for Best Film Editing, Best Sound Editing, and Best Sound Mixing. Nominated for 8 total including Best Picture and Best Director.",
-        "reception": "Critical acclaim for its immersive, visceral approach to war filmmaking. Nolan's innovative triple-timeline structure and Hans Zimmer's tense score were widely praised. Grossed $527 million.",
-    },
-    {
-        "title": "Coco",
-        "year": 2017,
-        "director": "Lee Unkrich, Adrian Molina",
-        "genre": "Animation, Family, Fantasy, Music",
-        "cast": "Anthony Gonzalez, Gael García Bernal, Benjamin Bratt (voice cast)",
-        "plot": "Despite his family's generations-old ban on music, young Miguel dreams of becoming a musician like his idol Ernesto de la Cruz. On Día de los Muertos (Day of the Dead), Miguel accidentally enters the Land of the Dead. To return to the living, he must seek the blessing of his deceased relatives while uncovering the true story behind his family's ban on music.",
-        "themes": "Family, memory, death and remembrance, cultural heritage, following your dreams, the importance of being remembered",
-        "awards": "Won 2 Academy Awards: Best Animated Feature and Best Original Song ('Remember Me'). Won Golden Globe for Best Animated Feature.",
-        "reception": "Universal acclaim. Praised for its respectful and beautiful portrayal of Mexican culture, emotional storytelling, and stunning visuals. Became a massive hit in Mexico and worldwide.",
-    },
-    {
-        "title": "Joker",
-        "year": 2019,
-        "director": "Todd Phillips",
-        "genre": "Crime, Drama, Thriller",
-        "cast": "Joaquin Phoenix, Robert De Niro, Zazie Beetz, Frances Conroy",
-        "plot": "Failed comedian and mentally ill loner Arthur Fleck navigates life in a decaying Gotham City. Disregarded by society and mistreated at every turn, Arthur begins a slow descent into madness that transforms him into the criminal mastermind known as the Joker. His journey reflects the broader social unrest in the city.",
-        "themes": "Mental illness, social inequality, alienation, the creation of evil, societal neglect, identity",
-        "awards": "Won 2 Academy Awards: Best Actor (Joaquin Phoenix) and Best Original Score. Nominated for 11 Oscars total including Best Picture and Best Director.",
-        "reception": "Polarizing critical reception but widely praised for Phoenix's transformative performance. Generated controversy for its depiction of violence and mental illness. Grossed over $1 billion on a modest budget.",
-    },
-    {
-        "title": "Dune",
-        "year": 2021,
-        "director": "Denis Villeneuve",
-        "genre": "Sci-Fi, Adventure, Drama",
-        "cast": "Timothée Chalamet, Rebecca Ferguson, Oscar Isaac, Zendaya, Josh Brolin, Jason Momoa",
-        "plot": "Paul Atreides, a gifted young man born into a great destiny beyond his understanding, must travel to the most dangerous planet in the universe to ensure the future of his family and his people. As malevolent forces explode into conflict over the planet Arrakis and its precious spice resource, Paul is thrust into a conflict that will determine the fate of the known universe.",
-        "themes": "Colonialism, ecology, religion and prophecy, destiny, political intrigue, resource exploitation",
-        "awards": "Won 6 Academy Awards for Cinematography, Film Editing, Sound, Original Score, Production Design, and Visual Effects. Nominated for 10 total including Best Picture.",
-        "reception": "Critical acclaim for its ambitious adaptation of Frank Herbert's classic novel. Villeneuve's visual storytelling and the ensemble cast were widely praised. Grossed $401 million despite simultaneous streaming release.",
-    },
-    {
-        "title": "Everything Everywhere All at Once",
-        "year": 2022,
-        "director": "Daniel Kwan, Daniel Scheinert",
-        "genre": "Action, Adventure, Comedy, Sci-Fi",
-        "cast": "Michelle Yeoh, Ke Huy Quan, Stephanie Hsu, Jamie Lee Curtis, James Hong",
-        "plot": "Evelyn Wang, a Chinese-American woman struggling with her taxes, her declining laundromat business, and her strained family relationships, discovers that she must connect with parallel universe versions of herself to prevent a powerful being from destroying the multiverse. Through absurdist and emotional adventures, she learns what truly matters.",
-        "themes": "Family, existential nihilism vs. meaning, immigration, generational trauma, kindness as resistance, the multiverse",
-        "awards": "Won 7 Academy Awards including Best Picture, Best Director, Best Actress (Michelle Yeoh — first Asian woman to win), Best Supporting Actor (Ke Huy Quan), Best Supporting Actress (Jamie Lee Curtis), Best Original Screenplay, and Best Film Editing.",
-        "reception": "Universal acclaim. Praised as wildly inventive, emotionally resonant, and culturally significant. Michelle Yeoh's performance and the Daniels' creative vision were celebrated as groundbreaking.",
-    },
-    {
-        "title": "The Truman Show",
-        "year": 1998,
-        "director": "Peter Weir",
-        "genre": "Comedy, Drama, Sci-Fi",
-        "cast": "Jim Carrey, Laura Linney, Ed Harris, Noah Emmerich",
-        "plot": "Truman Burbank has lived his entire life in the idyllic town of Seahaven, unaware that it is actually an enormous TV studio and that every person in his life is an actor. As Truman begins to notice inconsistencies in his world, he starts to question his reality and fights to discover the truth, while the show's creator desperately tries to keep him contained.",
-        "themes": "Reality vs. illusion, surveillance, free will, media manipulation, authenticity, the constructed self",
-        "awards": "Nominated for 3 Academy Awards. Ed Harris nominated for Best Supporting Actor. Won Golden Globe for Best Actor (Jim Carrey).",
-        "reception": "Critical acclaim as a prophetic satire of reality television and media culture. Carrey's dramatic performance surprised audiences. The film's themes became even more relevant with the rise of reality TV and social media.",
-    },
-    {
-        "title": "Jaws",
-        "year": 1975,
-        "director": "Steven Spielberg",
-        "genre": "Thriller, Adventure, Horror",
-        "cast": "Roy Scheider, Robert Shaw, Richard Dreyfuss",
-        "plot": "When a great white shark begins terrorizing the small beach town of Amity Island during the summer tourist season, police chief Martin Brody teams up with marine biologist Matt Hooper and grizzled shark hunter Quint to hunt and kill the beast. Despite political pressure to keep the beaches open, Brody must confront his own fear of water to save the town.",
-        "themes": "Man vs. nature, courage, political corruption, the clash between safety and commerce, fear",
-        "awards": "Won 3 Academy Awards for Best Film Editing, Best Original Score (John Williams), and Best Sound. Nominated for Best Picture.",
-        "reception": "Universally acclaimed and considered the first modern summer blockbuster. Created the concept of the wide-release summer event film. Spielberg's masterful tension-building and Williams' iconic score made it a cultural phenomenon. Grossed $470 million worldwide.",
-    },
-    {
-        "title": "Psycho",
-        "year": 1960,
-        "director": "Alfred Hitchcock",
-        "genre": "Horror, Mystery, Thriller",
-        "cast": "Anthony Perkins, Janet Leigh, Vera Miles, John Gavin",
-        "plot": "Phoenix secretary Marion Crane steals $40,000 from her employer's client and goes on the run. She stops for the night at the remote Bates Motel, managed by the peculiar Norman Bates, a young man dominated by his mother. Marion's disappearance prompts an investigation that uncovers the horrifying truth about Norman and his mother.",
-        "themes": "Dual identity, voyeurism, guilt, the darkness within the ordinary, psychosis, maternal influence",
-        "awards": "Nominated for 4 Academy Awards including Best Director and Best Supporting Actress (Janet Leigh). Won numerous retrospective honors.",
-        "reception": "Initially mixed reviews but quickly recognized as a masterpiece. Hitchcock's direction, particularly the legendary shower scene, revolutionized horror filmmaking. Considered one of the most influential films ever made.",
-    },
-    {
-        "title": "2001: A Space Odyssey",
-        "year": 1968,
-        "director": "Stanley Kubrick",
-        "genre": "Sci-Fi, Adventure",
-        "cast": "Keir Dullea, Gary Lockwood, William Sylvester",
-        "plot": "Humanity finds a mysterious monolith on the Moon that emits a signal toward Jupiter. Astronauts Dave Bowman and Frank Poole are sent on a mission aboard the Discovery One spacecraft, guided by the AI system HAL 9000, to investigate. When HAL malfunctions and becomes hostile, Dave must survive alone and faces a transcendent experience beyond Jupiter.",
-        "themes": "Evolution, artificial intelligence, the unknown, human destiny, technology vs. humanity, transcendence",
-        "awards": "Won 1 Academy Award for Best Visual Effects. Nominated for 4 Oscars total. The visual effects were decades ahead of their time.",
-        "reception": "Initially divided critics but is now universally regarded as one of the greatest and most influential films ever made. Its visual effects, philosophical depth, and use of classical music set new standards for science fiction cinema.",
-    },
-    {
-        "title": "Toy Story",
-        "year": 1995,
-        "director": "John Lasseter",
-        "genre": "Animation, Comedy, Family",
-        "cast": "Tom Hanks, Tim Allen, Don Rickles, Jim Varney (voice cast)",
-        "plot": "Woody, a pull-string cowboy doll, is the favorite toy of Andy Davis. When Andy receives a Buzz Lightyear action figure for his birthday, Woody feels threatened and his jealousy leads to both toys being lost outside the safety of Andy's room. They must overcome their rivalry and work together to get back home before Andy's family moves.",
-        "themes": "Jealousy, friendship, identity, belonging, the fear of being replaced, growing up",
-        "awards": "Special Achievement Academy Award for John Lasseter. Nominated for 3 Oscars including Best Original Screenplay (first animated film so nominated). Earned a lifetime of retrospective honors.",
-        "reception": "Revolutionary as the first fully computer-animated feature film. Universal critical acclaim for its storytelling, humor, and emotional depth. Launched Pixar as a major studio and changed animation forever.",
-    },
-    {
-        "title": "The Departed",
-        "year": 2006,
-        "director": "Martin Scorsese",
-        "genre": "Crime, Drama, Thriller",
-        "cast": "Leonardo DiCaprio, Matt Damon, Jack Nicholson, Mark Wahlberg, Vera Farmiga",
-        "plot": "In South Boston, the police department and the Irish mob wage war using moles planted in each other's organizations. Undercover cop Billy Costigan infiltrates the mob led by Frank Costello, while Colin Sullivan, a mobster who has risen through the police ranks, feeds information to Costello. Both sides race to identify the other's mole before being exposed.",
-        "themes": "Identity, loyalty, deception, moral corruption, the thin line between law and crime, paranoia",
-        "awards": "Won 4 Academy Awards: Best Picture, Best Director (Scorsese's first and only win), Best Adapted Screenplay, and Best Film Editing.",
-        "reception": "Universal acclaim. Critics praised the ensemble performances, Scorsese's direction, and the script's twists. Finally earned Scorsese his long-overdue Best Director Oscar.",
-    },
-    {
-        "title": "Black Panther",
-        "year": 2018,
-        "director": "Ryan Coogler",
-        "genre": "Action, Adventure, Sci-Fi",
-        "cast": "Chadwick Boseman, Michael B. Jordan, Lupita Nyong'o, Danai Gurira, Letitia Wright",
-        "plot": "After the death of his father, T'Challa returns home to the African nation of Wakanda to take his rightful place as king. When a powerful old enemy appears, T'Challa is tested as king and as Black Panther. He must rally his allies and release the full power of Wakanda to defeat Erik Killmonger, who threatens to abandon Wakanda's isolationist policies.",
-        "themes": "Identity, responsibility, isolationism vs. engagement, heritage, Pan-Africanism, colonialism's legacy",
-        "awards": "Won 3 Academy Awards for Original Score, Costume Design, and Production Design. First superhero film nominated for Best Picture. Nominated for 7 Oscars total.",
-        "reception": "Critical acclaim and cultural phenomenon. Praised for its representation, world-building, and Michael B. Jordan's compelling villain. Grossed $1.35 billion worldwide, becoming the highest-grossing solo superhero film.",
-    },
-    {
-        "title": "Amélie",
-        "year": 2001,
-        "director": "Jean-Pierre Jeunet",
-        "genre": "Comedy, Romance",
-        "cast": "Audrey Tautou, Mathieu Kassovitz, Rufus, Jamel Debbouze",
-        "plot": "Amélie Poulain, a shy waitress in a Montmartre café, discovers a hidden box of childhood treasures and decides to return it to its owner. Inspired by the joy this brings, she devotes herself to helping others find happiness through elaborate secret schemes, while struggling to connect with a quirky young man named Nino who collects discarded photo booth pictures.",
-        "themes": "Imagination, kindness, loneliness, the beauty in ordinary life, human connection, whimsy",
-        "awards": "Nominated for 5 Academy Awards including Best Foreign Language Film, Best Original Screenplay, and Best Cinematography. Won numerous European film awards.",
-        "reception": "Enormous critical and commercial success worldwide. Audrey Tautou became an international star. The film's visual style and whimsical tone made it one of the most beloved French films of all time.",
-    },
-    {
-        "title": "Pan's Labyrinth",
-        "year": 2006,
-        "director": "Guillermo del Toro",
-        "genre": "Drama, Fantasy, War",
-        "cast": "Ivana Baquero, Sergi López, Maribel Verdú, Doug Jones",
-        "plot": "In 1944 fascist Spain, young Ofelia moves with her pregnant mother to the countryside where her new stepfather, the brutal Captain Vidal, hunts anti-Franco guerrillas. Ofelia discovers an ancient labyrinth and meets a faun who tells her she is a princess of the underworld. She must complete three dangerous tasks to prove her royalty, blurring the line between fantasy and reality.",
-        "themes": "Innocence vs. brutality, escapism, disobedience as courage, fascism, fairy tales as survival, motherhood",
-        "awards": "Won 3 Academy Awards for Cinematography, Art Direction, and Makeup. Nominated for 6 total. Won numerous international awards.",
-        "reception": "Universal acclaim. Considered del Toro's masterpiece. Critics praised its seamless blending of fairy-tale fantasy with harsh political reality. One of the most celebrated Spanish-language films ever made.",
-    },
-    {
-        "title": "The Prestige",
-        "year": 2006,
-        "director": "Christopher Nolan",
-        "genre": "Drama, Mystery, Sci-Fi",
-        "cast": "Christian Bale, Hugh Jackman, Scarlett Johansson, Michael Caine, David Bowie",
-        "plot": "In Victorian London, rival magicians Robert Angier and Alfred Borden engage in a bitter competition to create the ultimate stage illusion. Their dangerous obsession leads to deception, sacrifice, and tragedy as each man goes to extreme lengths to outdo the other. The film's structure mirrors a magic trick with its own shocking reveal.",
-        "themes": "Obsession, sacrifice, the cost of greatness, deception, duality, the line between science and magic",
-        "awards": "Nominated for 2 Academy Awards for Cinematography and Art Direction.",
-        "reception": "Critical acclaim for its intricate plot and performances. Audiences embraced the twist ending and thematic depth. Considered one of Nolan's finest films and a modern thriller classic.",
-    },
-    {
-        "title": "Up",
-        "year": 2009,
-        "director": "Pete Docter, Bob Peterson",
-        "genre": "Animation, Adventure, Comedy",
-        "cast": "Ed Asner, Jordan Nagai, Christopher Plummer (voice cast)",
-        "plot": "Seventy-eight-year-old Carl Fredricksen, grieving the loss of his wife Ellie, ties thousands of balloons to his house and flies away to South America to fulfill their shared dream of visiting Paradise Falls. He discovers an 8-year-old Boy Scout named Russell has stowed away, and together they encounter exotic birds, talking dogs, and a childhood hero who isn't what he seems.",
-        "themes": "Grief and loss, adventure at any age, the meaning of home, letting go, found family",
-        "awards": "Won 2 Academy Awards: Best Animated Feature and Best Original Score. Nominated for 5 total including Best Picture (only the second animated film to receive this honor).",
-        "reception": "Universal acclaim, particularly for its devastating opening montage depicting Carl and Ellie's life together — widely regarded as one of the most emotionally powerful sequences in cinema. Grossed $735 million worldwide.",
-    },
-    {
-        "title": "Oppenheimer",
-        "year": 2023,
-        "director": "Christopher Nolan",
-        "genre": "Biography, Drama, History",
-        "cast": "Cillian Murphy, Emily Blunt, Matt Damon, Robert Downey Jr., Florence Pugh",
-        "plot": "The story of J. Robert Oppenheimer, the theoretical physicist who led the Manhattan Project during World War II to develop the atomic bomb. The film explores his genius, his moral crisis after Hiroshima, and the subsequent security hearing that sought to destroy his reputation during the Red Scare era.",
-        "themes": "Scientific responsibility, the ethics of warfare, McCarthyism, genius and its burden, the nuclear age, power and paranoia",
-        "awards": "Won 7 Academy Awards including Best Picture, Best Director, Best Actor (Cillian Murphy), and Best Supporting Actor (Robert Downey Jr.).",
-        "reception": "Universal critical acclaim. Praised as Nolan's most mature and important work. Murphy's nuanced performance and the film's complex narrative structure were widely celebrated. Grossed over $950 million worldwide.",
-    },
-    {
-        "title": "Rear Window",
-        "year": 1954,
-        "director": "Alfred Hitchcock",
-        "genre": "Mystery, Thriller",
-        "cast": "James Stewart, Grace Kelly, Wendell Corey, Thelma Ritter, Raymond Burr",
-        "plot": "Professional photographer L.B. Jefferies is confined to his apartment with a broken leg and passes the time by watching his neighbors through the rear window. He begins to suspect that one of them, Lars Thorwald, may have murdered his wife. With help from his glamorous girlfriend Lisa and his nurse Stella, Jefferies investigates from his wheelchair.",
-        "themes": "Voyeurism, isolation, the ethics of watching, relationships, suspicion and paranoia, urban life",
-        "awards": "Nominated for 4 Academy Awards including Best Director. Considered one of Hitchcock's greatest achievements.",
-        "reception": "Immediate critical acclaim. Considered a masterclass in suspense filmmaking and one of the greatest films ever made. Its exploration of voyeurism and spectatorship influenced generations of filmmakers.",
-    },
-    {
-        "title": "The Princess Bride",
-        "year": 1987,
-        "director": "Rob Reiner",
-        "genre": "Adventure, Comedy, Family, Fantasy, Romance",
-        "cast": "Cary Elwes, Robin Wright, Mandy Patinkin, Chris Sarandon, Wallace Shawn, André the Giant, Billy Crystal",
-        "plot": "A grandfather reads a story to his sick grandson about Westley, a farmhand turned pirate who must rescue his true love Princess Buttercup from the villainous Prince Humperdinck. Along the way, he encounters a skilled swordsman seeking revenge, a gentle giant, a scheming Sicilian, an evil count, and Rodents of Unusual Size in the Fire Swamp.",
-        "themes": "True love, adventure, storytelling within storytelling, good vs. evil, loyalty, wit over brawn",
-        "awards": "Nominated for 1 Academy Award for Best Original Song. Won no major awards but became one of the most quoted and beloved films in cinema history.",
-        "reception": "Modest box office success but became a massive cult classic through home video. Its quotable dialogue, charming performances, and genre-blending approach made it enduringly popular across generations.",
-    },
-    {
-        "title": "Casablanca",
-        "year": 1942,
-        "director": "Michael Curtiz",
-        "genre": "Drama, Romance, War",
-        "cast": "Humphrey Bogart, Ingrid Bergman, Paul Henreid, Claude Rains, Peter Lorre",
-        "plot": "During World War II, American expatriate Rick Blaine runs a nightclub in Casablanca, Morocco. His world is turned upside down when his former lover Ilsa Lund arrives with her husband Victor Laszlo, a Czech resistance leader fleeing the Nazis. Rick must choose between his love for Ilsa and helping the Laszlos escape to continue the fight against fascism.",
-        "themes": "Sacrifice, love and duty, patriotism, cynicism vs. idealism, wartime morality, the greater good",
-        "awards": "Won 3 Academy Awards: Best Picture, Best Director, and Best Adapted Screenplay. Nominated for 8 total.",
-        "reception": "Immediately recognized as a classic. Regularly cited as one of the greatest films ever made. Its dialogue, performances, and romantic tragedy have become embedded in popular culture. 'Here's looking at you, kid' and 'Of all the gin joints...' remain among the most quoted lines in cinema.",
-    },
-]
+TMDB_BASE = "https://api.themoviedb.org/3"
 
 
-def generate_movie_doc(movie: dict) -> str:
-    """Generate a comprehensive movie document."""
-    doc = f"""{movie['title']} ({movie['year']})
+def tmdb_get(endpoint: str, params: dict = None) -> dict:
+    """Make a TMDB API request."""
+    headers = {
+        "Authorization": f"Bearer {TMDB_API_KEY}",
+        "accept": "application/json",
+    }
+    resp = requests.get(f"{TMDB_BASE}/{endpoint}", headers=headers, params=params or {})
+    resp.raise_for_status()
+    return resp.json()
 
-BASIC INFORMATION
 
-Title: {movie['title']}
-Release Year: {movie['year']}
-Director: {movie['director']}
-Genre: {movie['genre']}
-Cast: {movie['cast']}
+def fetch_movie_details(movie_id: int) -> dict | None:
+    """Fetch full movie details including credits and reviews."""
+    try:
+        details = tmdb_get(f"movie/{movie_id}", {"append_to_response": "credits,reviews,keywords"})
+        return details
+    except Exception as e:
+        print(f"    ⚠️  Failed to fetch movie {movie_id}: {e}")
+        return None
 
-PLOT SUMMARY
 
-{movie['plot']}
+def format_movie_document(movie: dict) -> str:
+    """Format a TMDB movie response into a rich text document."""
+    title = movie.get("title", "Unknown")
+    year = movie.get("release_date", "")[:4] or "Unknown"
+    overview = movie.get("overview", "No overview available.")
+    runtime = movie.get("runtime", 0)
+    vote_avg = movie.get("vote_average", 0)
+    vote_count = movie.get("vote_count", 0)
+    budget = movie.get("budget", 0)
+    revenue = movie.get("revenue", 0)
+    tagline = movie.get("tagline", "")
+    status = movie.get("status", "")
+    original_language = movie.get("original_language", "")
 
-THEMES AND ANALYSIS
+    # Genres
+    genres = ", ".join(g["name"] for g in movie.get("genres", []))
 
-The major themes explored in {movie['title']} include: {movie['themes']}.
+    # Production companies & countries
+    companies = ", ".join(c["name"] for c in movie.get("production_companies", [])[:5])
+    countries = ", ".join(c["name"] for c in movie.get("production_countries", []))
 
-AWARDS AND RECOGNITION
+    # Director & key cast from credits
+    credits = movie.get("credits", {})
+    directors = [c["name"] for c in credits.get("crew", []) if c.get("job") == "Director"]
+    director_str = ", ".join(directors) if directors else "Unknown"
 
-{movie['awards']}
+    writers = [c["name"] for c in credits.get("crew", [])
+               if c.get("job") in ("Screenplay", "Writer", "Story")][:3]
+    writer_str = ", ".join(writers) if writers else "Unknown"
 
-CRITICAL RECEPTION
+    cast_members = credits.get("cast", [])[:10]
+    cast_lines = []
+    for actor in cast_members:
+        cast_lines.append(f"  - {actor['name']} as {actor.get('character', 'Unknown')}")
+    cast_str = "\n".join(cast_lines) if cast_lines else "  No cast information available."
 
-{movie['reception']}
+    # Keywords
+    keywords = movie.get("keywords", {}).get("keywords", [])
+    keyword_str = ", ".join(k["name"] for k in keywords[:15]) if keywords else "None listed"
+
+    # Reviews
+    reviews = movie.get("reviews", {}).get("results", [])[:3]
+    review_section = ""
+    if reviews:
+        review_parts = []
+        for r in reviews:
+            author = r.get("author", "Anonymous")
+            rating = r.get("author_details", {}).get("rating", "N/A")
+            content = r.get("content", "")[:600]
+            review_parts.append(
+                f'  Review by {author} (Rating: {rating}/10):\n  "{content}..."'
+            )
+        review_section = "\n\n".join(review_parts)
+    else:
+        review_section = "  No user reviews available."
+
+    # Format currency
+    def fmt_money(val):
+        if val and val > 0:
+            return f"${val:,.0f}"
+        return "Not available"
+
+    doc = f"""Title: {title}
+Release Year: {year}
+Directed by: {director_str}
+Written by: {writer_str}
+Genre: {genres}
+Runtime: {runtime} minutes
+Language: {original_language.upper()}
+Status: {status}
+Tagline: "{tagline}"
+
+== Plot Summary ==
+
+{overview}
+
+== Cast ==
+
+{cast_str}
+
+== Production ==
+
+Production Companies: {companies}
+Production Countries: {countries}
+Budget: {fmt_money(budget)}
+Box Office Revenue: {fmt_money(revenue)}
+
+== Ratings & Reception ==
+
+TMDB Rating: {vote_avg}/10 (based on {vote_count:,} votes)
+
+User Reviews:
+
+{review_section}
+
+== Keywords & Themes ==
+
+{keyword_str}
 """
-    return doc
+    return doc.strip()
 
 
-def main():
+def get_top_movie_ids(count: int = 60) -> list[int]:
+    """
+    Gather movie IDs from multiple TMDB lists to ensure 50+ diverse movies.
+    Uses: top rated, popular, and curated genre-based discovery.
+    """
+    movie_ids = set()
+
+    # Top rated movies (pages 1-3)
+    for page in range(1, 4):
+        data = tmdb_get("movie/top_rated", {"page": page, "language": "en-US"})
+        for m in data.get("results", []):
+            movie_ids.add(m["id"])
+        time.sleep(0.25)
+
+    # Popular movies
+    for page in range(1, 3):
+        data = tmdb_get("movie/popular", {"page": page, "language": "en-US"})
+        for m in data.get("results", []):
+            movie_ids.add(m["id"])
+        time.sleep(0.25)
+
+    # Discover by genre for diversity (Sci-Fi=878, Horror=27, Animation=16, Documentary=99)
+    for genre_id in [878, 27, 16, 99]:
+        data = tmdb_get("discover/movie", {
+            "sort_by": "vote_average.desc",
+            "vote_count.gte": 1000,
+            "with_genres": genre_id,
+            "page": 1,
+            "language": "en-US",
+        })
+        for m in data.get("results", []):
+            movie_ids.add(m["id"])
+        time.sleep(0.25)
+
+    # Return up to requested count
+    return list(movie_ids)[:count]
+
+
+def generate_sample_data(count: int = 55):
+    """Fetch movie data from TMDB and save as text documents."""
+    if not TMDB_API_KEY:
+        print("❌ TMDB_API_KEY not set. Add it to your .env file.")
+        print("   Get a free API key at: https://www.themoviedb.org/settings/api")
+        return
+
     os.makedirs(RAW_DATA_DIR, exist_ok=True)
 
-    print(f"🎬 Generating {len(MOVIES)} sample movie documents...")
-    for movie in MOVIES:
-        filename = f"{movie['title'].replace(' ', '_').replace(':', '')}_{movie['year']}.txt"
-        filepath = os.path.join(RAW_DATA_DIR, filename)
-        content = generate_movie_doc(movie)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"  ✅ {filename}")
+    print(f"🎬 Fetching movie IDs from TMDB...")
+    movie_ids = get_top_movie_ids(count)
+    print(f"   Found {len(movie_ids)} unique movie IDs")
 
-    print(f"\n📂 Generated {len(MOVIES)} documents in {RAW_DATA_DIR}")
-    print("   Run 'python -m scripts.ingest' to index them into ChromaDB.")
+    saved = 0
+    for i, mid in enumerate(movie_ids):
+        print(f"  [{i+1}/{len(movie_ids)}] Fetching movie {mid}...", end=" ")
+        movie = fetch_movie_details(mid)
+        if not movie:
+            continue
+
+        title = movie.get("title", "Unknown")
+        year = movie.get("release_date", "")[:4] or "0000"
+
+        # Build filename
+        safe_title = "".join(c if c.isalnum() or c in " -" else "_" for c in title)
+        safe_title = safe_title.replace(" ", "_")
+        filename = f"{safe_title}_{year}.txt"
+        filepath = os.path.join(RAW_DATA_DIR, filename)
+
+        doc_text = format_movie_document(movie)
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(doc_text)
+
+        print(f"✅ {title} ({year})")
+        saved += 1
+        time.sleep(0.3)  # Rate limit courtesy
+
+    print(f"\n✅ Saved {saved} movie documents to {RAW_DATA_DIR}")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Fetch movie data from TMDB")
+    parser.add_argument("--count", type=int, default=55, help="Number of movies to fetch")
+    args = parser.parse_args()
+
+    print("🎬 Movie RAG Chatbot — TMDB Data Fetcher")
+    print("=" * 50)
+    generate_sample_data(args.count)
